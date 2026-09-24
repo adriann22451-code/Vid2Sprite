@@ -17,7 +17,7 @@ p.s{color:var(--mut);margin:0 0 14px;font-size:13px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 label{display:flex;flex-direction:column;font-size:12px;color:var(--mut);gap:4px}
-input[type=number],input[type=file]{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--fg);font-size:15px}
+input[type=number],input[type=file],select{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--fg);font-size:15px}
 input[type=range]{width:100%}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 button{flex:1;min-width:120px;padding:11px;border:0;border-radius:10px;background:var(--acc);color:#fff;font-size:15px;font-weight:600}
@@ -52,6 +52,23 @@ video{display:none}
 <label id="tolw" style="display:none">Toleransi warna<input type="range" id="tol" min="1" max="100" value="25"></label>
 <div class="row"><button id="gen" disabled>Buat Sprite Sheet</button></div>
 <div id="msg">Pilih video dulu.</div>
+</div>
+
+<div class="card">
+<b>Animasi dari gambar</b>
+<p class="s" style="margin:2px 0 10px">Upload satu gambar karakter (PNG transparan paling bagus), pilih animasi.</p>
+<label>Gambar karakter<input type="file" id="ifile" accept="image/*"></label>
+<div class="grid" style="margin-top:12px">
+<label>Animasi<select id="anim"><option value="idle">Idle</option><option value="walk">Walk</option><option value="death">Death</option></select></label>
+<label>Jumlah frame<input type="number" id="icount" value="8" min="2" max="64"></label>
+<label>Ukuran frame (px)<input type="number" id="isize" value="128" min="16" max="1024"></label>
+<label>FPS pratinjau<input type="number" id="ifps" value="10" min="1" max="60"></label>
+<label>Kolom sheet (0 = otomatis)<input type="number" id="icols" value="0" min="0"></label>
+<label>Intensitas gerak<input type="range" id="iint" min="10" max="100" value="50"></label>
+</div>
+<label class="chk"><input type="checkbox" id="ikey"> Hapus background (warna piksel pojok kiri atas)</label>
+<div class="row"><button id="igen" disabled>Buat Animasi</button></div>
+<div id="imsg" style="font-size:13px;color:var(--mut);margin-top:8px;min-height:18px">Pilih gambar dulu.</div>
 </div>
 
 <div class="card" id="out" style="display:none">
@@ -182,6 +199,65 @@ $('dzip').onclick=async()=>{
 };
 $('dpng').onclick=()=>{ if(!meta)return; sheet.toBlob(b=>b&&save(base+'_sheet.png',b),'image/png'); };
 $('djson').onclick=()=>{ if(meta) save(base+'_sheet.json',JSON.stringify(meta,null,2)); };
+
+/* ===== Animasi dari gambar ===== */
+let img=null,ibase='char';
+const iMsg=t=>$('imsg').textContent=t;
+$('ifile').onchange=e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const im=new Image();
+  im.onload=()=>{img=im;ibase=f.name.replace(/\.[^.]+$/,'')||'char';$('igen').disabled=false;iMsg(`Gambar ${im.naturalWidth}×${im.naturalHeight} siap.`)};
+  im.onerror=()=>iMsg('Gambar tidak bisa dibaca.');
+  im.src=URL.createObjectURL(f);
+};
+function keyOut(c,w,h,t){
+  const d=c.getImageData(0,0,w,h),p=d.data,r=p[0],g=p[1],b=p[2];
+  for(let k=0;k<p.length;k+=4){ if(Math.hypot(p[k]-r,p[k+1]-g,p[k+2]-b)<=t)p[k+3]=0; }
+  c.putImageData(d,0,0);
+}
+$('igen').onclick=async()=>{
+  if(busy||!img)return; busy=true; $('igen').disabled=true;
+  try{
+    const anim=$('anim').value,n=Math.max(2,Math.min(64,+$('icount').value||8));
+    const cs=Math.max(16,+$('isize').value||128),fps=Math.max(1,+$('ifps').value||10),k=(+$('iint').value)/50;
+    let cols=+$('icols').value||Math.ceil(Math.sqrt(n)); cols=Math.min(cols,n);
+    const rows=Math.ceil(n/cols);
+    if(cols*cs>16000||rows*cs>16000){iMsg('Sheet terlalu besar. Kecilkan ukuran atau jumlah frame.');return}
+    const sc0=Math.min(1,512/Math.max(img.naturalWidth,img.naturalHeight));
+    const src=document.createElement('canvas');
+    src.width=Math.max(1,Math.round(img.naturalWidth*sc0)); src.height=Math.max(1,Math.round(img.naturalHeight*sc0));
+    const s2=src.getContext('2d',{willReadFrequently:true}); s2.drawImage(img,0,0,src.width,src.height);
+    if($('ikey').checked)keyOut(s2,src.width,src.height,110);
+    const fit=Math.min(cs*0.8/src.width,cs*0.8/src.height),dw=src.width*fit,dh=src.height*fit;
+    sheet.width=cols*cs; sheet.height=rows*cs;
+    const sc=sheet.getContext('2d');
+    const tmp=document.createElement('canvas'); tmp.width=cs; tmp.height=cs;
+    const tc=tmp.getContext('2d');
+    const frames=[],blobs=[];
+    for(let i=0;i<n;i++){
+      const t=i/n,p=i/(n-1);
+      let x=0,y=0,r=0,sx=1,sy=1,a=1;
+      if(anim==='idle'){const s=Math.sin(2*Math.PI*t);sy=1+0.04*k*s;sx=1-0.025*k*s;}
+      else if(anim==='walk'){const s=Math.sin(2*Math.PI*t),b=Math.abs(s);y=-b*cs*0.05*k;x=s*cs*0.015*k;r=s*0.06*k;sy=1+0.03*k*b;sx=1-0.02*k*b;}
+      else{const e=p*p;r=e*1.45;x=e*cs*0.2+Math.sin(p*30)*cs*0.02*k*(1-p);sx=sy=1-0.2*e;a=1-Math.max(0,(p-0.6)/0.4);}
+      tc.clearRect(0,0,cs,cs); tc.save(); tc.globalAlpha=a;
+      tc.translate(cs/2+x,cs*0.92+y); tc.rotate(r); tc.scale(sx,sy);
+      tc.drawImage(src,-dw/2,-dh,dw,dh); tc.restore();
+      blobs.push(await new Promise(rs=>tmp.toBlob(rs,'image/png')));
+      const fx=(i%cols)*cs,fy=Math.floor(i/cols)*cs;
+      sc.drawImage(tmp,fx,fy);
+      frames.push({index:i,x:fx,y:fy,w:cs,h:cs});
+    }
+    base=ibase+'_'+anim;
+    meta={image:base+'_sheet.png',animation:anim,frameWidth:cs,frameHeight:cs,columns:cols,rows,frameCount:n,fps,frames};
+    frameBlobs=blobs;
+    $('out').style.display='block';
+    iMsg(`Selesai: animasi ${anim}, ${n} frame. Lihat hasilnya di bawah.`);
+    play();
+    $('out').scrollIntoView({behavior:'smooth'});
+  }catch(err){iMsg('Gagal: '+(err.message||err))}
+  finally{busy=false;$('igen').disabled=false}
+};
 </script>
 </body>
 </html>
