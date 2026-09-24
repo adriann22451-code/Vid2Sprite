@@ -66,6 +66,8 @@ canvas{display:block;max-width:none}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{padding:4px 11px;border-radius:999px;background:var(--sf2);border:1px solid var(--ln);font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums}
 .acts{display:grid;gap:10px}
+#hbox{position:absolute;border:2px dashed #ff4d6d;pointer-events:none;box-sizing:border-box}
+.hb{margin-top:16px;padding-top:14px;border-top:1px solid var(--ln)}
 .foot{margin-top:22px;color:var(--mu);font-size:12.5px}
 </style>
 </head>
@@ -145,7 +147,7 @@ canvas{display:block;max-width:none}
   <div class="pvrow">
     <div>
       <h3>Pratinjau animasi</h3>
-      <div class="chk" style="display:inline-block"><canvas id="prev"></canvas></div>
+      <div class="chk" style="display:inline-block;position:relative"><canvas id="prev"></canvas><div id="hbox" hidden></div></div>
     </div>
     <div class="side">
       <div class="chips" id="stats"></div>
@@ -155,6 +157,15 @@ canvas{display:block;max-width:none}
         <button class="btn sec" id="djson">Unduh data JSON</button>
       </div>
     </div>
+  </div>
+  <div class="hb">
+    <h3>Hitbox (collision)</h3>
+    <div class="fields">
+      <label class="f">Perkecil kotak (%)<input type="number" id="hbin" value="10" min="0" max="45"></label>
+      <label class="f">Ambang transparansi<input type="number" id="hbth" value="16" min="0" max="254"></label>
+    </div>
+    <label class="sw"><input type="checkbox" id="hbshow" checked><span class="tg"></span><b>Tampilkan di pratinjau</b><small>Kotak merah putus-putus = hitbox gabungan semua frame</small></label>
+    <div class="status" id="hbinfo" style="margin-top:0"></div>
   </div>
 </section>
 </main>
@@ -393,6 +404,44 @@ g('ifile').addEventListener('change',e=>{
   const f=e.target.files[0]; if(!f)return;
   const p=g('ipv'); p.src=URL.createObjectURL(f); p.hidden=false;
 });
+let raw=null,rawU=null;
+const inset=(b,p)=>b&&({x:Math.round(b.x+b.w*p/200),y:Math.round(b.y+b.h*p/200),w:Math.max(1,Math.round(b.w*(1-p/100))),h:Math.max(1,Math.round(b.h*(1-p/100)))});
+function scan(){
+  const th=+g('hbth').value||0,ctx=g('sheet').getContext('2d',{willReadFrequently:true});
+  raw=meta.frames.map(f=>{
+    const d=ctx.getImageData(f.x,f.y,f.w,f.h).data;
+    let x0=f.w,y0=f.h,x1=-1,y1=-1;
+    for(let y=0;y<f.h;y++)for(let x=0;x<f.w;x++){
+      if(d[(y*f.w+x)*4+3]>th){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
+    }
+    return x1<0?null:{x:x0,y:y0,w:x1-x0+1,h:y1-y0+1};
+  });
+  const v=raw.filter(Boolean);
+  if(v.length){
+    const X=Math.min(...v.map(b=>b.x)),Y=Math.min(...v.map(b=>b.y));
+    rawU={x:X,y:Y,w:Math.max(...v.map(b=>b.x+b.w))-X,h:Math.max(...v.map(b=>b.y+b.h))-Y};
+  }else rawU=null;
+  apply();
+}
+function apply(){
+  if(!raw)return;
+  const p=Math.min(45,Math.max(0,+g('hbin').value||0));
+  meta.frames.forEach((f,i)=>{f.hitbox=inset(raw[i],p)||null});
+  meta.hitbox=inset(rawU,p)||null;
+  const ov=g('hbox'),u=meta.hitbox;
+  if(u&&g('hbshow').checked){
+    ov.hidden=false;
+    ov.style.left=u.x/meta.frameWidth*100+'%'; ov.style.top=u.y/meta.frameHeight*100+'%';
+    ov.style.width=u.w/meta.frameWidth*100+'%'; ov.style.height=u.h/meta.frameHeight*100+'%';
+  }else ov.hidden=true;
+  const full=rawU&&rawU.w*rawU.h>=0.98*meta.frameWidth*meta.frameHeight;
+  g('hbinfo').textContent=u
+    ?`Hitbox gabungan (relatif ke frame): x ${u.x}, y ${u.y}, lebar ${u.w}, tinggi ${u.h}.`+(full?' Background belum transparan, jadi hitbox = seluruh frame. Aktifkan hapus background dulu.':' Hitbox tiap frame ikut masuk ke file JSON.')
+    :'Tidak ada piksel terlihat di frame ini.';
+}
+g('hbth').addEventListener('input',()=>{if(meta)scan()});
+g('hbin').addEventListener('input',apply);
+g('hbshow').addEventListener('change',apply);
 const basePlay=window.play;
 window.play=function(){
   basePlay();
@@ -400,6 +449,7 @@ window.play=function(){
   [`${meta.frameCount} frame`,`${meta.frameWidth}×${meta.frameHeight} px`,`grid ${meta.columns}×${meta.rows}`,`${meta.fps} fps`].forEach(t=>{
     const c=document.createElement('span'); c.className='chip'; c.textContent=t; st.appendChild(c);
   });
+  scan();
   g('out').scrollIntoView({behavior:'smooth',block:'start'});
 };
 })();
