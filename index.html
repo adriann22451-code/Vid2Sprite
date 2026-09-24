@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Video ke Sprite Sheet</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#6b6b6b;--card:#f3f3f1;--acc:#3b6df0;--bd:#d8d8d4;--c1:#e6e6e2;--c2:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161616;--fg:#eee;--mut:#9a9a9a;--card:#232322;--acc:#7c9cff;--bd:#3a3a38;--c1:#2c2c2a;--c2:#222220}}
+:root[data-theme="dark"]{--bg:#161616;--fg:#eee;--mut:#9a9a9a;--card:#232322;--acc:#7c9cff;--bd:#3a3a38;--c1:#2c2c2a;--c2:#222220}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:720px;margin:0 auto}
+h1{font-size:20px;margin:0 0 4px}
+p.s{color:var(--mut);margin:0 0 14px;font-size:13px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mut);gap:4px}
+input[type=number],input[type=file]{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--fg);font-size:15px}
+input[type=range]{width:100%}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+button{flex:1;min-width:120px;padding:11px;border:0;border-radius:10px;background:var(--acc);color:#fff;font-size:15px;font-weight:600}
+button.sec{background:transparent;color:var(--acc);border:1px solid var(--acc)}
+button:disabled{opacity:.4}
+.chk{flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px;margin-top:10px}
+.wrap{overflow-x:auto;border:1px solid var(--bd);border-radius:8px;background:repeating-conic-gradient(var(--c1) 0 25%,var(--c2) 0 50%) 0 0/16px 16px}
+canvas{display:block;max-width:none}
+#msg{font-size:13px;color:var(--mut);margin-top:8px;min-height:18px}
+#prev{image-rendering:pixelated;max-width:100%}
+video{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>Video → Sprite Sheet</h1>
+<p class="s">Semua diproses di browser, video tidak diunggah ke mana pun.</p>
+
+<div class="card">
+<label>Pilih video<input type="file" id="file" accept="video/*"></label>
+<video id="v" muted playsinline preload="auto"></video>
+<div class="grid" style="margin-top:12px">
+<label>FPS (frame/detik)<input type="number" id="fps" value="12" min="1" max="60"></label>
+<label>Lebar frame (px)<input type="number" id="w" value="128" min="8" max="2048"></label>
+<label>Mulai (detik)<input type="number" id="start" value="0" min="0" step="0.1"></label>
+<label>Selesai (detik)<input type="number" id="end" value="0" min="0" step="0.1"></label>
+<label>Jumlah frame (0 = pakai FPS)<input type="number" id="count" value="0" min="0" max="500"></label>
+<label>Kolom sheet (0 = otomatis)<input type="number" id="cols" value="0" min="0"></label>
+<label>Tinggi frame<input type="number" id="h" disabled placeholder="otomatis"></label>
+</div>
+<label class="chk"><input type="checkbox" id="key"> Hapus background (pakai warna piksel pojok kiri atas)</label>
+<label id="tolw" style="display:none">Toleransi warna<input type="range" id="tol" min="1" max="100" value="25"></label>
+<div class="row"><button id="gen" disabled>Buat Sprite Sheet</button></div>
+<div id="msg">Pilih video dulu.</div>
+</div>
+
+<div class="card" id="out" style="display:none">
+<div class="wrap"><canvas id="sheet"></canvas></div>
+<div style="margin-top:12px;font-size:12px;color:var(--mut)">Pratinjau animasi</div>
+<div class="wrap" style="display:inline-block;margin-top:4px"><canvas id="prev"></canvas></div>
+<div class="row">
+<button id="dzip">Unduh semua frame (ZIP)</button>
+<button id="dpng" class="sec">Unduh sheet PNG</button>
+<button id="djson" class="sec">Unduh JSON</button>
+</div>
+</div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const v=$('v'),sheet=$('sheet'),prev=$('prev');
+let frameBlobs=[],url=null,base='sprite',meta=null,timer=null,busy=false;
+const msg=t=>$('msg').textContent=t;
+
+$('key').onchange=e=>$('tolw').style.display=e.target.checked?'flex':'none';
+
+$('file').onchange=e=>{
+  const f=e.target.files[0]; if(!f)return;
+  if(url)URL.revokeObjectURL(url);
+  url=URL.createObjectURL(f); base=f.name.replace(/\.[^.]+$/,'')||'sprite';
+  $('gen').disabled=true; msg('Memuat video…'); v.src=url;
+};
+v.onloadeddata=()=>{
+  $('end').value=v.duration.toFixed(2); $('start').value=0;
+  $('w').value=Math.min(+$('w').value||128,v.videoWidth);
+  updH(); $('gen').disabled=false;
+  msg(`Video ${v.videoWidth}×${v.videoHeight}, ${v.duration.toFixed(1)} dtk. Atur lalu tekan Buat.`);
+};
+v.onerror=()=>msg('Video tidak bisa dibaca di browser ini.');
+function updH(){ if(v.videoWidth) $('h').value=Math.round(+$('w').value*v.videoHeight/v.videoWidth); }
+$('w').oninput=updH;
+
+const seek=t=>new Promise(r=>{
+  if(Math.abs(v.currentTime-t)<0.0005){r();return}
+  v.onseeked=()=>r(); v.currentTime=t;
+});
+
+$('gen').onclick=async()=>{
+  if(busy)return; busy=true; $('gen').disabled=true;
+  try{
+    const fps=Math.max(1,+$('fps').value||12);
+    const s=Math.max(0,+$('start').value||0);
+    const e=Math.min(+$('end').value||v.duration,v.duration);
+    const fw=Math.max(8,+$('w').value||128);
+    const fh=Math.max(1,Math.round(fw*v.videoHeight/v.videoWidth));
+    if(e<=s){msg('Waktu selesai harus lebih besar dari waktu mulai.');return}
+    const cnt=Math.floor(+$('count').value||0);
+    let n=cnt>0?cnt:Math.floor((e-s)*fps); n=Math.max(1,Math.min(n,500));
+    const step=cnt>0?(e-s)/n:1/fps;
+    const efps=cnt>0?Math.min(60,Math.max(1,Math.round(n/(e-s)))):fps;
+    let cols=+$('cols').value||Math.ceil(Math.sqrt(n)); cols=Math.min(cols,n);
+    const rows=Math.ceil(n/cols);
+    if(cols*fw>16000||rows*fh>16000){msg('Sheet terlalu besar. Kecilkan lebar frame, FPS, atau durasi.');return}
+    sheet.width=cols*fw; sheet.height=rows*fh;
+    const sc=sheet.getContext('2d');
+    const tmp=document.createElement('canvas'); tmp.width=fw; tmp.height=fh;
+    const tc=tmp.getContext('2d',{willReadFrequently:true});
+    const key=$('key').checked, tol=(+$('tol').value)*4.4;
+    const frames=[]; const blobs=[];
+    v.pause();
+    for(let i=0;i<n;i++){
+      await seek(Math.min(s+i*step,v.duration-0.001));
+      tc.clearRect(0,0,fw,fh); tc.drawImage(v,0,0,fw,fh);
+      if(key){
+        const d=tc.getImageData(0,0,fw,fh),p=d.data,r=p[0],g=p[1],b=p[2];
+        for(let k=0;k<p.length;k+=4){
+          if(Math.hypot(p[k]-r,p[k+1]-g,p[k+2]-b)<=tol)p[k+3]=0;
+        }
+        tc.putImageData(d,0,0);
+      }
+      blobs.push(await new Promise(r=>tmp.toBlob(r,'image/png')));
+      const x=(i%cols)*fw,y=Math.floor(i/cols)*fh;
+      sc.drawImage(tmp,x,y);
+      frames.push({index:i,x,y,w:fw,h:fh});
+      msg(`Mengekstrak frame ${i+1}/${n}…`);
+    }
+    meta={image:base+'_sheet.png',frameWidth:fw,frameHeight:fh,columns:cols,rows,frameCount:n,fps:efps,frames};
+    frameBlobs=blobs;
+    $('out').style.display='block';
+    msg(`Selesai: ${n} frame, sheet ${sheet.width}×${sheet.height} px.`);
+    play();
+  }catch(err){msg('Gagal: '+(err.message||err))}
+  finally{busy=false;$('gen').disabled=false}
+};
+
+function play(){
+  clearInterval(timer);
+  const {frameWidth:w,frameHeight:h,frames,fps}=meta;
+  prev.width=w; prev.height=h;
+  prev.style.width=Math.min(w*2,300)+'px';
+  const pc=prev.getContext('2d'); let i=0;
+  timer=setInterval(()=>{
+    const f=frames[i%frames.length];
+    pc.clearRect(0,0,w,h); pc.drawImage(sheet,f.x,f.y,w,h,0,0,w,h); i++;
+  },1000/fps);
+}
+
+async function save(filename,data){
+  try{
+    const d=window.claude&&await window.claude.use('downloads');
+    if(d){await d.save({filename,data});return}
+  }catch(e){ if(e&&e.code==='declined')return; }
+  // Di luar claude.ai (mis. Vercel): unduh biasa lewat browser
+  const blob=data instanceof Blob?data:new Blob([data]);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+}
+$('dzip').onclick=async()=>{
+  if(!frameBlobs.length)return;
+  if(!window.JSZip){msg('Library ZIP gagal dimuat. Coba muat ulang halaman.');return}
+  try{
+    msg('Membuat ZIP…');
+    const z=new JSZip(),pad=Math.max(3,String(frameBlobs.length).length);
+    frameBlobs.forEach((b,i)=>z.file(`${base}_${String(i+1).padStart(pad,'0')}.png`,b));
+    const blob=await z.generateAsync({type:'blob'});
+    msg(`ZIP siap: ${frameBlobs.length} gambar PNG.`);
+    await save(base+'_frames.zip',blob);
+  }catch(e){msg('Gagal membuat ZIP: '+(e.message||e))}
+};
+$('dpng').onclick=()=>{ if(!meta)return; sheet.toBlob(b=>b&&save(base+'_sheet.png',b),'image/png'); };
+$('djson').onclick=()=>{ if(meta) save(base+'_sheet.json',JSON.stringify(meta,null,2)); };
+</script>
+</body>
+</html>
