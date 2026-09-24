@@ -39,7 +39,7 @@ h3{margin:0 0 10px;font-size:13.5px;font-weight:700;color:var(--mu)}
 .fields{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px}
 @media (min-width:640px){.fields{grid-template-columns:repeat(4,1fr)}}
 label.f{display:flex;flex-direction:column;gap:5px;font-size:12.5px;font-weight:500;color:var(--mu)}
-input[type=number],select{width:100%;height:44px;padding:0 10px;border:1px solid var(--ln);border-radius:9px;background:var(--sf2);color:var(--tx);font:600 15px Manrope,sans-serif;font-variant-numeric:tabular-nums}
+input[type=number],input[type=text],select{width:100%;height:44px;padding:0 10px;border:1px solid var(--ln);border-radius:9px;background:var(--sf2);color:var(--tx);font:600 15px Manrope,sans-serif;font-variant-numeric:tabular-nums}
 input[type=number]:disabled{opacity:.55}
 input[type=range]{width:100%;height:44px;accent-color:var(--ac)}
 .sw{position:relative;display:grid;grid-template-columns:auto 1fr;column-gap:12px;align-items:center;margin-bottom:14px;cursor:pointer}
@@ -68,6 +68,8 @@ canvas{display:block;max-width:none}
 .acts{display:grid;gap:10px}
 #hbox{position:absolute;border:2px dashed #ff4d6d;pointer-events:none;box-sizing:border-box}
 .hb{margin-top:16px;padding-top:14px;border-top:1px solid var(--ln)}
+.chipx{border:0;background:transparent;color:var(--mu);font-size:16px;line-height:1;cursor:pointer;padding:0 2px 0 6px}
+.chipx:hover{color:var(--tx)}
 .foot{margin-top:22px;color:var(--mu);font-size:12.5px}
 </style>
 </head>
@@ -95,6 +97,14 @@ canvas{display:block;max-width:none}
   <video id="v" class="pv" muted playsinline preload="auto" controls hidden></video>
 
   <div class="box">
+    <h3>Jenis animasi</h3>
+    <div class="fields">
+      <label class="f" style="grid-column:1/-1">Animasi ini untuk<select id="atype">
+        <optgroup label="Dasar"><option value="idle">Idle (diam)</option><option value="walk">Walk (jalan)</option><option value="run">Run (lari)</option><option value="jump">Jump (lompat)</option><option value="fall">Fall (jatuh di udara)</option><option value="land">Land (mendarat)</option><option value="climb">Climb (memanjat)</option></optgroup>
+        <optgroup label="Battle"><option value="attack">Attack (serangan biasa)</option><option value="critical">Critical (serangan pamungkas)</option><option value="skill">Skill (jurus)</option><option value="cast">Cast (rapal mantra)</option><option value="summon">Summon (memanggil)</option><option value="item">Item (pakai ramuan)</option><option value="defend">Defend (bertahan)</option><option value="dodge">Dodge (menghindar)</option><option value="hurt">Hurt (terkena serangan)</option><option value="stun">Stun (pusing)</option><option value="sleep">Sleep (tertidur)</option><option value="death">Death (mati)</option><option value="victory">Victory (menang)</option></optgroup>
+        <optgroup label="Lainnya"><option value="interact">Interact (buka peti, bicara)</option><option value="levelup">Level up (naik level)</option></optgroup>
+      </select><small id="thint" style="font-size:12.5px"></small></label>
+    </div>
     <h3>Ambil frame</h3>
     <div class="fields">
       <label class="f">Mulai (detik)<input type="number" id="start" value="0" min="0" step="0.1"></label>
@@ -167,6 +177,17 @@ canvas{display:block;max-width:none}
     <label class="sw"><input type="checkbox" id="hbshow" checked><span class="tg"></span><b>Tampilkan di pratinjau</b><small>Kotak merah putus-putus = hitbox gabungan semua frame</small></label>
     <div class="status" id="hbinfo" style="margin-top:0"></div>
   </div>
+  <div class="hb">
+    <h3>Koleksi karakter</h3>
+    <p class="s" style="margin:0 0 12px;color:var(--mu);font-size:13.5px">Simpan tiap animasi ke koleksi (ganti video atau jenis, generate lagi, simpan lagi), lalu unduh semuanya sebagai satu paket berisi sheet, frame, JSON, dan manifest.</p>
+    <div class="fields"><label class="f" style="grid-column:1/-1">Nama karakter<input type="text" id="pname" value="karakter" maxlength="40" autocomplete="off"></label></div>
+    <div class="chips" id="plist" style="margin-bottom:10px"></div>
+    <div class="status" id="pinfo" style="margin:0 0 12px">Koleksi masih kosong.</div>
+    <div class="acts">
+      <button class="btn" id="padd">Tambah animasi ini ke koleksi</button>
+      <button class="btn sec" id="dpack" disabled>Unduh koleksi (ZIP)</button>
+    </div>
+  </div>
 </section>
 </main>
 <p class="foot">Semua diproses di browser kamu. File tidak diunggah ke server. <a href="battle.html" style="color:inherit;font-weight:700">Coba demo battle</a></p>
@@ -176,7 +197,7 @@ canvas{display:block;max-width:none}
 <script>
 const $=id=>document.getElementById(id);
 const v=$('v'),sheet=$('sheet'),prev=$('prev');
-let frameBlobs=[],url=null,base='sprite',meta=null,timer=null,busy=false;
+let vbase='sprite',frameBlobs=[],url=null,base='sprite',meta=null,timer=null,busy=false;
 const msg=t=>$('msg').textContent=t;
 
 $('key').onchange=e=>$('tolw').style.display=e.target.checked?'flex':'none';
@@ -184,7 +205,7 @@ $('key').onchange=e=>$('tolw').style.display=e.target.checked?'flex':'none';
 $('file').onchange=e=>{
   const f=e.target.files[0]; if(!f)return;
   if(url)URL.revokeObjectURL(url);
-  url=URL.createObjectURL(f); base=f.name.replace(/\.[^.]+$/,'')||'sprite';
+  url=URL.createObjectURL(f); base=vbase=f.name.replace(/\.[^.]+$/,'')||'sprite';
   $('gen').disabled=true; msg('Memuat video…'); v.src=url;
 };
 v.onloadeddata=()=>{
@@ -241,7 +262,8 @@ $('gen').onclick=async()=>{
       frames.push({index:i,x,y,w:fw,h:fh});
       msg(`Mengekstrak frame ${i+1}/${n}…`);
     }
-    meta={image:base+'_sheet.png',frameWidth:fw,frameHeight:fh,columns:cols,rows,frameCount:n,fps:efps,frames};
+    base=vbase+'_'+$('atype').value;
+    meta={image:base+'_sheet.png',animation:$('atype').value,frameWidth:fw,frameHeight:fh,columns:cols,rows,frameCount:n,fps:efps,frames};
     frameBlobs=blobs;
     $('out').style.display='block';
     msg(`Selesai: ${n} frame, sheet ${sheet.width}×${sheet.height} px.`);
@@ -451,6 +473,85 @@ window.play=function(){
   });
   scan();
   g('out').scrollIntoView({behavior:'smooth',block:'start'});
+};
+})();
+</script>
+<script>
+/* ===== Jenis animasi RPG + koleksi karakter ===== */
+(()=>{
+const g=id=>document.getElementById(id);
+const T={
+ idle:{n:8,loop:true,tip:'Napas pelan, diulang terus.'},
+ walk:{n:8,loop:true,tip:'Satu siklus langkah kiri-kanan.'},
+ run:{n:8,loop:true,tip:'Satu siklus lari, lebih cepat dari walk.'},
+ jump:{n:8,loop:false,tip:'Dari tolakan sampai mendarat.'},
+ attack:{n:8,loop:false,tip:'Satu ayunan; damage biasanya di tengah.'},
+ skill:{n:12,loop:false,tip:'Jurus khusus, lebih panjang dari attack.'},
+ cast:{n:12,loop:false,tip:'Merapal mantra sampai efek keluar.'},
+ defend:{n:6,loop:true,tip:'Pose bertahan yang bisa ditahan.'},
+ dodge:{n:6,loop:false,tip:'Gerakan menghindar yang cepat.'},
+ hurt:{n:4,loop:false,tip:'Terkena serangan, singkat saja.'},
+ death:{n:10,loop:false,tip:'Jatuh sampai diam; frame terakhir ditahan.'},
+ victory:{n:10,loop:false,tip:'Pose menang setelah battle.'},
+ fall:{n:4,loop:true,tip:'Jatuh di udara, diulang sampai mendarat.'},
+ land:{n:4,loop:false,tip:'Mendarat dengan lutut menekuk.'},
+ climb:{n:8,loop:true,tip:'Satu siklus memanjat.'},
+ critical:{n:14,loop:false,tip:'Serangan pamungkas, lebih panjang dan dramatis.'},
+ summon:{n:12,loop:false,tip:'Memanggil sesuatu; efek muncul di akhir.'},
+ item:{n:8,loop:false,tip:'Memakai ramuan atau item.'},
+ stun:{n:6,loop:true,tip:'Pusing atau tersetrum, diulang selama status aktif.'},
+ sleep:{n:6,loop:true,tip:'Tertidur dengan napas pelan.'},
+ interact:{n:6,loop:false,tip:'Membuka peti atau bicara dengan NPC.'},
+ levelup:{n:10,loop:false,tip:'Pose atau efek naik level.'}
+};
+function applyType(){
+  const t=T[g('atype').value]; if(!t)return;
+  g('count').value=t.n;
+  g('thint').textContent=`Saran: ${t.n} frame, ${t.loop?'diulang terus':'sekali putar'}. ${t.tip}`;
+}
+g('atype').addEventListener('change',applyType); applyType();
+
+const pack=new Map();
+function renderPack(){
+  const box=g('plist'); box.textContent='';
+  pack.forEach((v,k)=>{
+    const c=document.createElement('span'); c.className='chip'; c.textContent=`${k}: ${v.meta.frames.length} frame`;
+    const x=document.createElement('button'); x.type='button'; x.className='chipx'; x.textContent='×'; x.setAttribute('aria-label','Hapus '+k);
+    x.onclick=()=>{pack.delete(k);renderPack()};
+    c.appendChild(x); box.appendChild(c);
+  });
+  g('dpack').disabled=!pack.size;
+  g('pinfo').textContent=pack.size?`${pack.size} animasi di koleksi.`:'Koleksi masih kosong.';
+}
+g('padd').onclick=async()=>{
+  if(!meta||!frameBlobs.length)return;
+  const type=meta.animation||'idle';
+  const sh=await new Promise(r=>sheet.toBlob(r,'image/png'));
+  const m=JSON.parse(JSON.stringify(meta));
+  m.image=type+'_sheet.png'; m.loop=T[type]?T[type].loop:false;
+  pack.set(type,{meta:m,frames:frameBlobs.slice(),sheet:sh});
+  renderPack();
+  g('pinfo').textContent=`${type} ditambahkan. ${pack.size} animasi di koleksi.`;
+};
+g('dpack').onclick=async()=>{
+  if(!pack.size)return;
+  if(!window.JSZip){g('pinfo').textContent='Library ZIP gagal dimuat. Muat ulang halaman.';return}
+  try{
+    g('pinfo').textContent='Membuat ZIP…';
+    const name=(g('pname').value.trim()||'karakter').replace(/[^\w\-]+/g,'_');
+    const z=new JSZip(),root=z.folder(name),man={character:name,animations:{}};
+    for(const [k,v] of pack){
+      const m=v.meta,d=root.folder(k),pad=Math.max(3,String(v.frames.length).length);
+      d.file(k+'_sheet.png',v.sheet); d.file(k+'.json',JSON.stringify(m,null,2));
+      const fd=d.folder('frames');
+      v.frames.forEach((b,i)=>fd.file(`${k}_${String(i+1).padStart(pad,'0')}.png`,b));
+      man.animations[k]={sheet:`${k}/${k}_sheet.png`,data:`${k}/${k}.json`,frames:m.frameCount||m.frames.length,fps:m.fps,loop:m.loop,frameWidth:m.frameWidth,frameHeight:m.frameHeight,columns:m.columns,rows:m.rows,hitbox:m.hitbox||null};
+    }
+    root.file('manifest.json',JSON.stringify(man,null,2));
+    const blob=await z.generateAsync({type:'blob'});
+    g('pinfo').textContent=`Paket siap: ${pack.size} animasi.`;
+    await save(name+'_pack.zip',blob);
+  }catch(e){g('pinfo').textContent='Gagal membuat ZIP: '+(e.message||e)}
 };
 })();
 </script>
