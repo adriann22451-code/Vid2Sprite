@@ -60,9 +60,9 @@ video{display:none}
 <label>Gambar karakter<input type="file" id="ifile" accept="image/*"></label>
 <div class="grid" style="margin-top:12px">
 <label>Animasi<select id="anim"><option value="idle">Idle</option><option value="walk">Walk</option><option value="death">Death</option></select></label>
-<label>Jumlah frame<input type="number" id="icount" value="8" min="2" max="64"></label>
+<label>Jumlah frame<input type="number" id="icount" value="12" min="2" max="64"></label>
 <label>Ukuran frame (px)<input type="number" id="isize" value="128" min="16" max="1024"></label>
-<label>FPS pratinjau<input type="number" id="ifps" value="10" min="1" max="60"></label>
+<label>FPS pratinjau<input type="number" id="ifps" value="12" min="1" max="60"></label>
 <label>Kolom sheet (0 = otomatis)<input type="number" id="icols" value="0" min="0"></label>
 <label>Intensitas gerak<input type="range" id="iint" min="10" max="100" value="50"></label>
 </div>
@@ -236,13 +236,43 @@ $('igen').onclick=async()=>{
     const frames=[],blobs=[];
     for(let i=0;i<n;i++){
       const t=i/n,p=i/(n-1);
-      let x=0,y=0,r=0,sx=1,sy=1,a=1;
-      if(anim==='idle'){const s=Math.sin(2*Math.PI*t);sy=1+0.04*k*s;sx=1-0.025*k*s;}
-      else if(anim==='walk'){const s=Math.sin(2*Math.PI*t),b=Math.abs(s);y=-b*cs*0.05*k;x=s*cs*0.015*k;r=s*0.06*k;sy=1+0.03*k*b;sx=1-0.02*k*b;}
-      else{const e=p*p;r=e*1.45;x=e*cs*0.2+Math.sin(p*30)*cs*0.02*k*(1-p);sx=sy=1-0.2*e;a=1-Math.max(0,(p-0.6)/0.4);}
+      let x=0,y=0,r=0,sx=1,sy=1,a=1,wf=()=>[0,0,0];
+      const TAU=2*Math.PI,cl=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+      if(anim==='idle'){
+        // napas: badan naik-turun, bagian atas (kepala) sedikit tertinggal
+        const ph=TAU*t,s=Math.sin(ph);
+        sy=1+0.025*k*s; sx=1-0.015*k*s;
+        wf=h=>[cs*0.012*k*h*h*Math.sin(ph-h), -cs*0.015*k*h*Math.sin(ph-0.9*h), -cs*0.015*k*h*Math.sin(ph-0.9*h)];
+      }else if(anim==='walk'){
+        // badan bob + goyang, kaki kiri/kanan bergantian terangkat
+        const ph=TAU*t,s=Math.sin(ph),c2=Math.cos(2*ph);
+        y=-cs*0.045*k*s*s; r=0.035*k*s; sy=1-0.03*k*c2; sx=1+0.02*k*c2;
+        wf=h=>{
+          const leg=cl((0.4-h)/0.4,0,1),lift=cs*0.05*k*leg;
+          return [cs*0.03*k*h*Math.sin(ph+0.6*h),-lift*Math.max(0,s),-lift*Math.max(0,-s)];
+        };
+      }else{
+        // death: hentakan mundur, jatuh dengan overshoot, memantul, lalu memudar
+        const u=cl((p-0.1)/0.7,0,1),c1=1.70158,c3=c1+1;
+        const b2=1+c3*Math.pow(u-1,3)+c1*Math.pow(u-1,2);
+        const rec=Math.sin(Math.PI*cl(p/0.2,0,1));
+        r=1.5*b2; sy=1-0.12*b2+0.05*rec; sx=1+0.08*b2-0.03*rec;
+        x=-cs*0.06*k*rec-dh*sy*0.5*Math.sin(r);
+        y=-dw*sx*0.5*Math.max(0,Math.sin(r));
+        if(u>0.6)y-=Math.abs(Math.sin((u-0.6)/0.4*TAU))*(1-u)*cs*0.05*k;
+        a=1-cl((p-0.8)/0.2,0,1);
+        wf=h=>[cs*0.05*k*h*h*Math.sin(Math.PI*u),0,0];
+      }
       tc.clearRect(0,0,cs,cs); tc.save(); tc.globalAlpha=a;
       tc.translate(cs/2+x,cs*0.92+y); tc.rotate(r); tc.scale(sx,sy);
-      tc.drawImage(src,-dw/2,-dh,dw,dh); tc.restore();
+      // gambar per potongan horizontal (48 strip) supaya bagian badan bisa bergerak beda-beda
+      const S=48,sh=src.height/S,stH=dh/S,hw=src.width/2,dhw=dw/2;
+      for(let j=0;j<S;j++){
+        const h=1-(j+0.5)/S,w=wf(h),sy0=j*sh,dy0=-dh+j*stH;
+        tc.drawImage(src,0,sy0,hw+0.5,sh+0.5,-dhw+w[0],dy0+w[1],dhw+0.5,stH+0.6);
+        tc.drawImage(src,hw,sy0,hw,sh+0.5,w[0],dy0+w[2],dhw,stH+0.6);
+      }
+      tc.restore();
       blobs.push(await new Promise(rs=>tmp.toBlob(rs,'image/png')));
       const fx=(i%cols)*cs,fy=Math.floor(i/cols)*cs;
       sc.drawImage(tmp,fx,fy);
