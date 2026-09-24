@@ -70,6 +70,8 @@ canvas{display:block;max-width:none}
 .hb{margin-top:16px;padding-top:14px;border-top:1px solid var(--ln)}
 .chipx{border:0;background:transparent;color:var(--mu);font-size:16px;line-height:1;cursor:pointer;padding:0 2px 0 6px}
 .chipx:hover{color:var(--tx)}
+.ck{display:flex;align-items:center;gap:10px;min-height:44px;font-size:13.5px;font-weight:600;color:var(--tx);cursor:pointer}
+input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);border-radius:9px;background:var(--sf2)}
 .foot{margin-top:22px;color:var(--mu);font-size:12.5px}
 </style>
 </head>
@@ -118,8 +120,16 @@ canvas{display:block;max-width:none}
       <label class="f">Tinggi frame<input type="number" id="h" disabled placeholder="otomatis"></label>
       <label class="f">Kolom sheet (0 = otomatis)<input type="number" id="cols" value="0" min="0"></label>
     </div>
-    <label class="sw"><input type="checkbox" id="key"><span class="tg"></span><b>Hapus background</b><small>Warna diambil dari piksel pojok kiri atas</small></label>
-    <label class="f" id="tolw" style="display:none;margin-bottom:14px">Toleransi warna<input type="range" id="tol" min="1" max="100" value="25"></label>
+    <label class="sw"><input type="checkbox" id="key"><span class="tg"></span><b>Hapus background (chroma key)</b><small>Untuk video green screen atau background polos</small></label>
+    <div id="tolw" style="display:none;flex-direction:column;gap:12px;margin-bottom:14px">
+      <label class="f">Warna background<select id="kmode"><option value="green">Hijau (green screen)</option><option value="blue">Biru (blue screen)</option><option value="magenta">Magenta</option><option value="custom">Pilih warna sendiri</option><option value="auto">Otomatis (pojok kiri atas)</option></select></label>
+      <label class="f" id="kcolw" hidden>Warna yang dihapus<input type="color" id="kcol" value="#00ff00"></label>
+      <label class="f">Toleransi warna<input type="range" id="tol" min="1" max="100" value="35"></label>
+      <label class="f">Kehalusan tepi<input type="range" id="ksoft" min="1" max="60" value="15"></label>
+      <label class="ck"><input type="checkbox" id="kdesp" checked> Kurangi sisa warna hijau/biru di tepi (despill)</label>
+      <button class="btn sec full" id="ktest" type="button">Uji di frame video ini</button>
+      <div class="chk" id="kwrap" hidden><canvas id="kprev" style="max-width:100%"></canvas></div>
+    </div>
     <button class="btn full" id="gen" disabled>Buat sprite sheet</button>
     <div class="status" id="msg" role="status">Pilih video dulu.</div>
   </div>
@@ -145,7 +155,14 @@ canvas{display:block;max-width:none}
       <label class="f">Kolom sheet (0 = otomatis)<input type="number" id="icols" value="0" min="0"></label>
       <label class="f" style="grid-column:span 2">Intensitas gerak<input type="range" id="iint" min="10" max="100" value="50"></label>
     </div>
-    <label class="sw"><input type="checkbox" id="ikey"><span class="tg"></span><b>Hapus background</b><small>Warna diambil dari piksel pojok kiri atas</small></label>
+    <label class="sw"><input type="checkbox" id="ikey"><span class="tg"></span><b>Hapus background (chroma key)</b><small>Untuk gambar dengan background polos</small></label>
+    <div id="itolw" style="display:none;flex-direction:column;gap:12px;margin-bottom:14px">
+      <label class="f">Warna background<select id="imode"><option value="auto">Otomatis (pojok kiri atas)</option><option value="green">Hijau (green screen)</option><option value="blue">Biru (blue screen)</option><option value="magenta">Magenta</option><option value="custom">Pilih warna sendiri</option></select></label>
+      <label class="f" id="icolw" hidden>Warna yang dihapus<input type="color" id="icol" value="#ffffff"></label>
+      <label class="f">Toleransi warna<input type="range" id="itol" min="1" max="100" value="35"></label>
+      <label class="f">Kehalusan tepi<input type="range" id="isoft" min="1" max="60" value="15"></label>
+      <label class="ck"><input type="checkbox" id="idesp" checked> Kurangi sisa warna hijau/biru di tepi (despill)</label>
+    </div>
     <button class="btn full" id="igen" disabled>Buat animasi</button>
     <div class="status" id="imsg" role="status">Pilih gambar dulu.</div>
   </div>
@@ -249,13 +266,7 @@ $('gen').onclick=async()=>{
     for(let i=0;i<n;i++){
       await seek(Math.min(s+i*step,v.duration-0.001));
       tc.clearRect(0,0,fw,fh); tc.drawImage(v,0,0,fw,fh);
-      if(key){
-        const d=tc.getImageData(0,0,fw,fh),p=d.data,r=p[0],g=p[1],b=p[2];
-        for(let k=0;k<p.length;k+=4){
-          if(Math.hypot(p[k]-r,p[k+1]-g,p[k+2]-b)<=tol)p[k+3]=0;
-        }
-        tc.putImageData(d,0,0);
-      }
+      if(key)chromaKey(tc,fw,fh,KV);
       blobs.push(await new Promise(r=>tmp.toBlob(r,'image/png')));
       const x=(i%cols)*fw,y=Math.floor(i/cols)*fh;
       sc.drawImage(tmp,x,y);
@@ -338,7 +349,7 @@ $('igen').onclick=async()=>{
     const src=document.createElement('canvas');
     src.width=Math.max(1,Math.round(img.naturalWidth*sc0)); src.height=Math.max(1,Math.round(img.naturalHeight*sc0));
     const s2=src.getContext('2d',{willReadFrequently:true}); s2.drawImage(img,0,0,src.width,src.height);
-    if($('ikey').checked)keyOut(s2,src.width,src.height,110);
+    if($('ikey').checked)chromaKey(s2,src.width,src.height,KI);
     const fit=Math.min(cs*0.8/src.width,cs*0.8/src.height),dw=src.width*fit,dh=src.height*fit;
     sheet.width=cols*cs; sheet.height=rows*cs;
     const sc=sheet.getContext('2d');
@@ -553,6 +564,58 @@ g('dpack').onclick=async()=>{
     await save(name+'_pack.zip',blob);
   }catch(e){g('pinfo').textContent='Gagal membuat ZIP: '+(e.message||e)}
 };
+})();
+</script>
+<script>
+/* ===== Chroma key (green screen) ===== */
+const KV={mode:'kmode',col:'kcol',tol:'tol',soft:'ksoft',desp:'kdesp'};
+const KI={mode:'imode',col:'icol',tol:'itol',soft:'isoft',desp:'idesp'};
+function chromaKey(c,w,h,K){
+  const G=id=>document.getElementById(id),d=c.getImageData(0,0,w,h),p=d.data;
+  const mode=G(K.mode).value,tol=+G(K.tol).value,soft=Math.max(1,+G(K.soft).value),desp=G(K.desp).checked;
+  let kr,kg,kb;
+  if(mode==='auto'){kr=p[0];kg=p[1];kb=p[2]}
+  else if(mode==='green'){kr=0;kg=255;kb=0}
+  else if(mode==='blue'){kr=0;kg=0;kb=255}
+  else if(mode==='magenta'){kr=255;kg=0;kb=255}
+  else{const v=parseInt(G(K.col).value.slice(1),16);kr=(v>>16)&255;kg=(v>>8)&255;kb=v&255}
+  // warna dinormalkan terhadap kecerahan, jadi bagian hijau yang gelap (bayangan) tetap terhapus
+  const E=32,km=Math.max(kr,kg,kb)+E,kn0=kr/km,kn1=kg/km,kn2=kb/km;
+  const chromatic=(Math.max(kr,kg,kb)-Math.min(kr,kg,kb))/km>.3;
+  const lo=tol,hi=tol+soft,mx=Math.max(kr,kg,kb);
+  const dom=(kg===mx&&kg-Math.max(kr,kb)>60)?1:(kb===mx&&kb-Math.max(kr,kg)>60)?2:-1;
+  for(let i=0;i<p.length;i+=4){
+    const r=p[i],g=p[i+1],b=p[i+2];
+    const m=Math.max(r,g,b)+E;
+    const dist=chromatic?150*Math.hypot(r/m-kn0,g/m-kn1,b/m-kn2):Math.hypot(r-kr,g-kg,b-kb)/2.5;
+    const a=dist<=lo?0:dist>=hi?1:(dist-lo)/(hi-lo);
+    p[i+3]=Math.round(p[i+3]*a);
+    if(desp&&a>0&&dom>=0&&dist<hi*2.2){
+      if(dom===1){const m=(r+b)/2;if(g>m)p[i+1]=m}
+      else{const m=(r+g)/2;if(b>m)p[i+2]=m}
+    }
+  }
+  c.putImageData(d,0,0);
+}
+(()=>{
+const g=id=>document.getElementById(id);
+[['key','tolw','kmode','kcolw'],['ikey','itolw','imode','icolw']].forEach(([k,w,m,c])=>{
+  g(k).addEventListener('change',e=>{g(w).style.display=e.target.checked?'flex':'none'});
+  g(m).addEventListener('change',()=>{g(c).hidden=g(m).value!=='custom'});
+});
+function test(){
+  const v=g('v'); if(!v.videoWidth)return;
+  const cv=g('kprev'),w=Math.min(360,v.videoWidth),h=Math.round(w*v.videoHeight/v.videoWidth);
+  cv.width=w;cv.height=h;
+  const c=cv.getContext('2d',{willReadFrequently:true});
+  c.drawImage(v,0,0,w,h); chromaKey(c,w,h,KV);
+  g('kwrap').hidden=false;
+}
+g('ktest').addEventListener('click',()=>{
+  if(!g('v').videoWidth){g('msg').textContent='Pilih video dulu untuk menguji.';return}
+  test();
+});
+['kmode','kcol','tol','ksoft','kdesp'].forEach(id=>g(id).addEventListener('input',()=>{if(!g('kwrap').hidden)test()}));
 })();
 </script>
 </body>
