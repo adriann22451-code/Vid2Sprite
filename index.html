@@ -147,6 +147,11 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
       <button class="btn sec" type="button" id="presetDel" style="grid-column:span 1" disabled>🗑 Hapus</button>
     </div>
     <p class="s" style="margin:8px 0 0;color:var(--mu);font-size:12.5px">Preset menyimpan lebar frame, kolom, FPS, dan pengaturan hapus-background, supaya bisa langsung dipakai lagi untuk animasi lain tanpa mengatur ulang.</p>
+    <div class="fields" style="margin-top:10px">
+      <button class="btn sec" type="button" id="presetExport" style="grid-column:span 2">⬇ Ekspor semua preset (.json)</button>
+      <label class="btn sec" style="grid-column:span 2;text-align:center;cursor:pointer">⬆ Impor preset<input type="file" id="presetImportFile" accept=".json,application/json" hidden></label>
+    </div>
+    <p class="s" style="margin:8px 0 0;color:var(--mu);font-size:12.5px">Ekspor/impor mencakup preset video &amp; gambar sekaligus — pakai ini untuk memindahkan preset ke perangkat atau browser lain.</p>
     <h3>Pratinjau rentang</h3>
     <button class="btn sec full" id="ptest" type="button" disabled>Pratinjau frame dalam rentang ini</button>
     <p class="s" style="margin:8px 0 0;color:var(--mu);font-size:12.5px">Cek dulu apakah rentang, ukuran, dan hapus-background sudah pas sebelum proses penuh (yang bisa makan waktu untuk video panjang).</p>
@@ -196,6 +201,11 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
       <button class="btn sec" type="button" id="presetDelI" style="grid-column:span 1" disabled>🗑 Hapus</button>
     </div>
     <p class="s" style="margin:8px 0 0;color:var(--mu);font-size:12.5px">Preset menyimpan ukuran frame, kolom, FPS, intensitas gerak, dan pengaturan hapus-background.</p>
+    <div class="fields" style="margin-top:10px">
+      <button class="btn sec" type="button" id="presetExportI" style="grid-column:span 2">⬇ Ekspor semua preset (.json)</button>
+      <label class="btn sec" style="grid-column:span 2;text-align:center;cursor:pointer">⬆ Impor preset<input type="file" id="presetImportFileI" accept=".json,application/json" hidden></label>
+    </div>
+    <p class="s" style="margin:8px 0 0;color:var(--mu);font-size:12.5px">Ekspor/impor mencakup preset video &amp; gambar sekaligus — pakai ini untuk memindahkan preset ke perangkat atau browser lain.</p>
     <button class="btn full" id="igen" disabled>Buat animasi</button>
     <div class="status" id="imsg" role="status">Pilih gambar dulu.</div>
   </div>
@@ -930,9 +940,50 @@ function wire(selId,nameId,saveId,loadId,delId,storeKey,getFields,applyFields){
     refresh();
   });
   refresh();
+  return refresh;
 }
-wire('presetSel','presetName','presetSave','presetLoad','presetDel',LS_V,fieldsVideo,applyVideo);
-wire('presetSelI','presetNameI','presetSaveI','presetLoadI','presetDelI',LS_I,fieldsImage,applyImage);
+const refreshV=wire('presetSel','presetName','presetSave','presetLoad','presetDel',LS_V,fieldsVideo,applyVideo);
+const refreshI=wire('presetSelI','presetNameI','presetSaveI','presetLoadI','presetDelI',LS_I,fieldsImage,applyImage);
+
+/* ---- ekspor/impor preset sebagai satu file .json (portabel antar perangkat/browser) ---- */
+function exportPresets(){
+  const data={app:'Vid2Sprite',kind:'presets',version:1,exportedAt:new Date().toISOString(),
+    video:loadPresets(LS_V),image:loadPresets(LS_I)};
+  save('vid2sprite_presets.json',JSON.stringify(data,null,2));
+}
+function importPresets(file){
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    let data;
+    try{data=JSON.parse(reader.result)}catch(e){alert('File bukan JSON yang valid.');return}
+    if(!data||typeof data!=='object'){alert('Format file preset tidak dikenali.');return}
+    let added=0;
+    if(data.video&&typeof data.video==='object'){
+      const store=loadPresets(LS_V);
+      Object.entries(data.video).forEach(([k,v])=>{store[k]=v;added++});
+      savePresets(LS_V,store);
+    }
+    if(data.image&&typeof data.image==='object'){
+      const store=loadPresets(LS_I);
+      Object.entries(data.image).forEach(([k,v])=>{store[k]=v;added++});
+      savePresets(LS_I,store);
+    }
+    if(!added){alert('Tidak ada preset yang ditemukan di file ini.');return}
+    refreshV(); refreshI();
+    alert(`Berhasil impor ${added} preset.`);
+  };
+  reader.onerror=()=>alert('Gagal membaca file.');
+  reader.readAsText(file);
+}
+[['presetExport','presetImportFile'],['presetExportI','presetImportFileI']].forEach(([expId,impId])=>{
+  g(expId).addEventListener('click',exportPresets);
+  g(impId).addEventListener('change',e=>{
+    const f=e.target.files[0];
+    importPresets(f);
+    e.target.value='';
+  });
+});
 })();
 </script>
 </body>
