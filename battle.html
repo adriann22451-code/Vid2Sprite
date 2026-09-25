@@ -26,23 +26,26 @@ canvas{display:block;width:100%;height:auto;border-radius:14px;border:1px solid 
 .btn:disabled{opacity:.4;cursor:not-allowed}
 .btn.sec{background:transparent;color:var(--tx);border:1.5px solid var(--ln);box-shadow:none}
 .btn.sec:hover{border-color:var(--ac)}
+.btn.sm{min-height:38px;padding:0 14px;font-size:13.5px;box-shadow:0 3px 0 var(--acd)}
+.btn.sm.sec{box-shadow:none}
+.btn.tgt{background:#ff6b6b;box-shadow:0 4px 0 #a83c3c}
 label.c{display:flex;align-items:center;gap:8px;min-height:44px;font-weight:600;font-size:13.5px;cursor:pointer}
 input[type=checkbox]{width:20px;height:20px;accent-color:var(--ac)}
+input[type=number]{width:64px;padding:6px 8px;border-radius:8px;border:1px solid var(--ln);background:var(--sf);color:var(--tx);font:600 13px Manrope,sans-serif}
 .box{background:var(--sf);border:1px solid var(--ln);border-radius:14px;padding:16px;margin-top:14px}
 h2{margin:0 0 4px;font-size:16px}
 p.s{margin:0 0 12px;color:var(--mu);font-size:13.5px}
 h3{margin:16px 0 8px;font-size:13.5px;color:var(--mu)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
-.slot{display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--ln);border-radius:10px;background:var(--sf2);font-size:13px}
-.slot b{font-size:14px}
-.slot small{color:var(--mu);overflow-wrap:anywhere}
-.slot input{font-size:13px;max-width:100%}
-.rep{padding:8px 10px;border-radius:8px;background:var(--sf2);border:1px solid var(--ln);font-size:13px}
-.rep b{font-size:13.5px}
+.roster{display:flex;flex-direction:column;gap:8px}
+.card{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:10px 12px;border:1px solid var(--ln);border-radius:10px;background:var(--sf2);font-size:13px}
+.card b{font-size:14px;min-width:90px}
+.card .fld{display:flex;align-items:center;gap:5px;color:var(--mu);font-size:12.5px}
+.card .tag{font-size:11.5px;color:var(--mu);background:var(--bg);padding:2px 8px;border-radius:99px}
+.addrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.fileBtn{position:relative;overflow:hidden;display:inline-block}
+.fileBtn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.rep{padding:8px 10px;border-radius:8px;background:var(--sf2);border:1px solid var(--ln);font-size:13px;margin-top:8px}
 .rep.fail{border-color:#ff6b6b}
-.rep.warn{border-color:var(--acd)}
-.rep ul{margin:4px 0 0;padding-left:18px;color:var(--mu)}
-.rep ul li{margin:2px 0}
 </style>
 </head>
 <body>
@@ -52,173 +55,166 @@ h3{margin:16px 0 8px;font-size:13.5px;color:var(--mu)}
 <canvas id="cv" width="640" height="360" aria-label="Arena battle"></canvas>
 
 <div class="bar"><span id="msg"></span></div>
-<div class="bar">
+<div class="bar" id="actionBar">
   <button class="btn" id="atk">Serang</button>
   <button class="btn" id="skl">Skill</button>
   <button class="btn" id="def">Bertahan</button>
-  <button class="btn" id="itm">Item (3)</button>
-  <button class="btn sec" id="restart" hidden>Main Lagi</button>
+  <button class="btn" id="itm">Item</button>
+</div>
+<div class="bar" id="targetBar" hidden></div>
+<div class="bar">
+  <button class="btn sec" id="startBtn">Mulai / Reset Battle</button>
 </div>
 <div class="bar">
-  <label class="c"><input type="checkbox" id="auto"> Otomatis (AI lawan AI)</label>
+  <label class="c"><input type="checkbox" id="auto"> Otomatis (giliran ally juga di-AI)</label>
   <label class="c"><input type="checkbox" id="hb"> Tampilkan hitbox</label>
   <label class="c"><input type="checkbox" id="px"> Pixel art</label>
   <label class="c"><input type="checkbox" id="right" checked> Sprite asli menghadap kanan</label>
 </div>
 
 <section class="box">
-  <h2>Sprite</h2>
-  <p class="s">Tanpa file, karakter tampil sebagai kotak biru (pemain) dan merah (musuh). Untuk tiap animasi, pilih file <b>PNG dan JSON sekaligus</b> dari tool (pilih dua file dalam satu kali buka). Slot yang kosong otomatis memakai animasi Idle sebagai gantinya.</p>
-  <h3>Pemain</h3>
-  <div class="grid">
-    <label class="slot"><b>Idle</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="P_idle"><small>Belum dipilih. Juga dipakai untuk hitbox.</small></label>
-    <label class="slot"><b>Walk</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="P_walk"><small>Belum dipilih</small></label>
-    <label class="slot"><b>Attack</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="P_attack"><small>Belum dipilih</small></label>
-    <label class="slot"><b>Skill</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="P_skill"><small>Belum dipilih</small></label>
-    <label class="slot"><b>Bertahan</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="P_defend"><small>Belum dipilih</small></label>
-    <label class="slot"><b>Item</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="P_item"><small>Belum dipilih</small></label>
-    <label class="slot"><b>Kena serang</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="P_hurt"><small>Belum dipilih</small></label>
-    <label class="slot"><b>Kalah</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="P_death"><small>Belum dipilih</small></label>
-    <label class="slot"><b>Menang</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="P_victory"><small>Belum dipilih</small></label>
-  </div>
-  <h3>Musuh</h3>
-  <div class="grid">
-    <label class="slot"><b>Idle (opsional)</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="E_idle"><small>Kosong = memakai idle pemain</small></label>
-    <label class="slot"><b>Walk</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="E_walk"><small>Belum dipilih</small></label>
-    <label class="slot"><b>Attack</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="E_attack"><small>Belum dipilih</small></label>
-    <label class="slot"><b>Skill</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="E_skill"><small>Belum dipilih</small></label>
-    <label class="slot"><b>Kena serang</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="E_hurt"><small>Belum dipilih</small></label>
-    <label class="slot"><b>Kalah</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="E_death"><small>Belum dipilih</small></label>
+  <h2>Party</h2>
+  <p class="s">Tambah karakter dari file ZIP koleksi (hasil "Unduh koleksi (ZIP)" di generator) — semua animasi di dalamnya otomatis dipasang. Atau pakai kotak placeholder untuk uji coba cepat tanpa file.</p>
+  <div class="roster" id="rosterAlly"></div>
+  <div class="addrow">
+    <span class="btn sm fileBtn">+ Tambah dari ZIP koleksi<input type="file" accept=".zip" id="zipAlly"></span>
+    <button class="btn sm sec" id="phAlly">+ Tambah placeholder</button>
   </div>
 </section>
 
-<section class="box" id="reportBox" hidden>
-  <h2>Test report</h2>
-  <p class="s" id="reportSummary"></p>
-  <div id="reportList" style="display:flex;flex-direction:column;gap:6px"></div>
+<section class="box">
+  <h2>Musuh</h2>
+  <div class="roster" id="rosterEnemy"></div>
+  <div class="addrow">
+    <span class="btn sm fileBtn">+ Tambah dari ZIP koleksi<input type="file" accept=".zip" id="zipEnemy"></span>
+    <button class="btn sm sec" id="phEnemy">+ Tambah placeholder</button>
+  </div>
+</section>
+
+<section class="box" id="loadReportBox" hidden>
+  <h2>Status load ZIP</h2>
+  <div id="loadReportList"></div>
 </section>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);
-const cv=$('cv'),ctx=cv.getContext('2d'),W=640,H=360,GY=290,CH=130,P0=110,E0=530;
+const cv=$('cv'),ctx=cv.getContext('2d'),W=640,H=360,GY=290,CH=130;
+const ALLY_REGION=[70,255], ENEMY_REGION=[385,570];
 
-const sprP={idle:null,walk:null,attack:null,skill:null,defend:null,item:null,hurt:null,death:null,victory:null};
-const sprE={idle:null,walk:null,attack:null,skill:null,hurt:null,death:null};
-
-/* ---- muat PNG + JSON ---- */
-async function loadPair(files){
-  const a=[...files];
-  const j=a.find(f=>/\.json$/i.test(f.name)),p=a.find(f=>/\.(png|webp|jpe?g)$/i.test(f.name));
-  if(!j||!p)throw new Error('Pilih file PNG dan JSON sekaligus.');
-  let meta; try{meta=JSON.parse(await j.text())}catch(e){throw new Error('JSON tidak bisa dibaca.')}
-  if(!Array.isArray(meta.frames)||!meta.frames.length||!meta.frameHeight)throw new Error('JSON ini bukan dari tool sprite.');
-  const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('PNG tidak bisa dibaca.'));i.src=URL.createObjectURL(p)});
-  return {img,meta};
+/* ---- roster (setup, sebelum battle mulai) ---- */
+let allies=[], enemies=[];
+let uidSeq=1;
+function newChar(side,name,anims){
+  return {id:uidSeq++,side,name,anims:anims||{},speed:10,hp:100,maxHp:100,items:3,
+          x:0,homeX:0,anim:'idle',t:0,once:false,flip:false,dead:false,fade:1,hurtT:0,
+          state:'idle',defending:false,kind:null,animKey:null,hitDone:false,target:null};
 }
-const slotErrors={};
-document.querySelectorAll('input[data-slot]').forEach(inp=>inp.addEventListener('change',async()=>{
-  const [side,anim]=inp.dataset.slot.split('_');
-  const dict=side==='P'?sprP:sprE;
-  const out=inp.parentElement.querySelector('small');
-  if(!inp.files.length)return;
-  try{dict[anim]=await loadPair(inp.files);delete slotErrors[inp.dataset.slot];out.textContent=dict[anim].meta.frames.length+' frame dimuat'}
-  catch(e){dict[anim]=null;slotErrors[inp.dataset.slot]=e.message;out.textContent=e.message}
-  renderReport();
-}));
-
-/* ---- test report: validasi pasangan PNG+JSON per slot, tanpa mengubah gameplay ---- */
-const LOOP_EXPECTED={idle:true,walk:true};
-function validateSlot(slotKey,entry){
-  if(!entry)return{level:'ok',results:[]};
-  const {img,meta}=entry,results=[];
-  const num=v=>typeof v==='number'&&isFinite(v);
-  if(!num(meta.frameWidth)||meta.frameWidth<=0)results.push({level:'fail',msg:'frameWidth tidak ada / tidak valid.'});
-  if(!num(meta.frameHeight)||meta.frameHeight<=0)results.push({level:'fail',msg:'frameHeight tidak ada / tidak valid.'});
-  if(!Array.isArray(meta.frames)||!meta.frames.length)results.push({level:'fail',msg:'frames[] kosong atau tidak ada.'});
-  if(!num(meta.fps)||meta.fps<=0)results.push({level:'warn',msg:'fps tidak ada/tidak valid — dipakai fallback 10fps.'});
-  if(typeof meta.loop!=='boolean')results.push({level:'warn',msg:'Field loop tidak ada — dipakai tebakan default.'});
-
-  if(num(meta.frameWidth)&&num(meta.frameHeight)&&Array.isArray(meta.frames)&&meta.frames.length&&img.naturalWidth){
-    const cols=meta.columns||Math.ceil(Math.sqrt(meta.frames.length));
-    const rows=meta.rows||Math.ceil(meta.frames.length/cols);
-    const pad=meta.padding||0;
-    const expW=cols*meta.frameWidth+pad*(cols+1),expH=rows*meta.frameHeight+pad*(rows+1);
-    if(Math.abs(img.naturalWidth-expW)>2)results.push({level:'fail',msg:`Lebar PNG (${img.naturalWidth}px) tidak cocok dengan JSON (perkiraan ${expW}px dari columns×frameWidth).`});
-    if(Math.abs(img.naturalHeight-expH)>2)results.push({level:'fail',msg:`Tinggi PNG (${img.naturalHeight}px) tidak cocok dengan JSON (perkiraan ${expH}px dari rows×frameHeight).`});
-  }
-  if(Array.isArray(meta.frames)&&img.naturalWidth){
-    const bad=meta.frames.some(f=>!num(f.x)||!num(f.y)||!num(f.w)||!num(f.h)||f.x<0||f.y<0||f.x+f.w>img.naturalWidth+2||f.y+f.h>img.naturalHeight+2);
-    if(bad)results.push({level:'fail',msg:'Ada frame yang koordinatnya berada di luar ukuran PNG.'});
-  }
-  const hb=meta.hitbox;
-  if(!hb)results.push({level:'warn',msg:'Tidak ada hitbox global di JSON — dipakai kotak default.'});
-  else if(num(hb.x)&&num(hb.y)&&num(hb.w)&&num(hb.h)){
-    if(hb.w<=0||hb.h<=0)results.push({level:'fail',msg:'Hitbox lebar/tinggi 0 atau negatif.'});
-    else if(hb.x<0||hb.y<0||hb.x+hb.w>meta.frameWidth+2||hb.y+hb.h>meta.frameHeight+2)results.push({level:'fail',msg:'Hitbox keluar dari batas frame.'});
-  }else results.push({level:'fail',msg:'Field hitbox ada tapi x/y/w/h tidak lengkap.'});
-
-  const animName=slotKey.split('_')[1];
-  if(typeof meta.loop==='boolean'&&animName in LOOP_EXPECTED){
-    const expect=LOOP_EXPECTED[animName];
-    if(meta.loop!==expect)results.push({level:'warn',msg:`loop=${meta.loop}, biasanya "${animName}" di-set loop=${expect} (${expect?'diulang terus':'sekali lalu berhenti'}).`});
-  }
-  const level=results.some(r=>r.level==='fail')?'fail':(results.length?'warn':'ok');
-  return{level,results};
+function rosterArr(side){return side==='ally'?allies:enemies;}
+function addPlaceholder(side){
+  const arr=rosterArr(side);
+  const name=(side==='ally'?'Ally ':'Musuh ')+(arr.length+1);
+  arr.push(newChar(side,name,{}));
+  renderRoster();
 }
-function collectSlots(){
-  return[...document.querySelectorAll('input[data-slot]')].map(inp=>{
-    const[side,anim]=inp.dataset.slot.split('_');
-    return{key:inp.dataset.slot,label:inp.parentElement.querySelector('b').textContent,dict:side==='P'?sprP:sprE,anim};
+function removeChar(side,id){
+  const arr=rosterArr(side);
+  const i=arr.findIndex(c=>c.id===id);
+  if(i>-1)arr.splice(i,1);
+  renderRoster();
+}
+function renderRoster(){
+  [['ally',$('rosterAlly')],['enemy',$('rosterEnemy')]].forEach(([side,box])=>{
+    box.textContent='';
+    rosterArr(side).forEach(c=>{
+      const row=document.createElement('div');row.className='card';
+      const nm=document.createElement('b');nm.textContent=c.name;row.appendChild(nm);
+      const tag=document.createElement('span');tag.className='tag';
+      const n=Object.keys(c.anims).length;tag.textContent=n?n+' animasi dimuat':'placeholder (tanpa sprite)';
+      row.appendChild(tag);
+      const hpF=document.createElement('label');hpF.className='fld';hpF.textContent='HP ';
+      const hpI=document.createElement('input');hpI.type='number';hpI.min=1;hpI.value=c.maxHp;
+      hpI.addEventListener('change',()=>{c.maxHp=Math.max(1,+hpI.value||100);c.hp=c.maxHp;});
+      hpF.appendChild(hpI);row.appendChild(hpF);
+      const spF=document.createElement('label');spF.className='fld';spF.textContent='Speed ';
+      const spI=document.createElement('input');spI.type='number';spI.min=1;spI.value=c.speed;
+      spI.addEventListener('change',()=>{c.speed=Math.max(1,+spI.value||10);});
+      spF.appendChild(spI);row.appendChild(spF);
+      const rm=document.createElement('button');rm.className='btn sm sec';rm.textContent='Hapus';
+      rm.addEventListener('click',()=>removeChar(side,c.id));
+      row.appendChild(rm);
+      box.appendChild(row);
+    });
   });
 }
-function renderReport(){
-  const box=$('reportList');box.textContent='';
-  let ok=0,warn=0,fail=0,touched=0;
-  collectSlots().forEach(({key,label,dict,anim})=>{
-    const entry=dict[anim],loadErr=slotErrors[key];
-    if(!entry&&!loadErr)return; // slot belum diisi = tidak dinilai
-    touched++;
-    let level,results;
-    if(loadErr){level='fail';results=[{level:'fail',msg:loadErr}];}
-    else({level,results}=validateSlot(key,entry));
-    if(level==='ok')ok++;else if(level==='warn')warn++;else fail++;
-    const row=document.createElement('div');row.className='rep '+level;
-    const head=document.createElement('b');
-    head.textContent=(level==='ok'?'✅ ':level==='warn'?'⚠️ ':'❌ ')+label+' ('+key+')';
-    row.appendChild(head);
-    if(results.length){
-      const ul=document.createElement('ul');
-      results.forEach(r=>{const li=document.createElement('li');li.textContent=r.msg;ul.appendChild(li);});
-      row.appendChild(ul);
+
+/* ---- load ZIP koleksi (manifest.json + sheet PNG + JSON per animasi) ---- */
+function loadReport(msg,fail){
+  $('loadReportBox').hidden=false;
+  const row=document.createElement('div');row.className='rep'+(fail?' fail':'');row.textContent=msg;
+  $('loadReportList').prepend(row);
+}
+async function loadZipCharacter(file,side){
+  try{
+    const zip=await JSZip.loadAsync(file);
+    const manifestFile=Object.values(zip.files).find(f=>/(^|\/)manifest\.json$/i.test(f.name)&&!f.dir);
+    if(!manifestFile)throw new Error('Tidak ada manifest.json di dalam ZIP ini.');
+    const manifest=JSON.parse(await manifestFile.async('string'));
+    const base=manifestFile.name.slice(0,manifestFile.name.length-'manifest.json'.length);
+    const anims={};
+    for(const key in (manifest.animations||{})){
+      const entry=manifest.animations[key];
+      const sheetEntry=zip.file(base+entry.sheet)||zip.file(entry.sheet);
+      const dataEntry=zip.file(base+entry.data)||zip.file(entry.data);
+      if(!sheetEntry||!dataEntry){loadReport(`(${file.name}) Lewati animasi "${key}": file sheet/JSON tidak ditemukan di ZIP.`,true);continue;}
+      const meta=JSON.parse(await dataEntry.async('string'));
+      const blob=await sheetEntry.async('blob');
+      const img=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('PNG rusak: '+key));im.src=URL.createObjectURL(blob)});
+      anims[key]={img,meta};
     }
-    box.appendChild(row);
-  });
-  $('reportBox').hidden=touched===0;
-  $('reportSummary').textContent=touched?`${ok} lolos, ${warn} peringatan, ${fail} gagal, dari ${touched} slot yang sudah diisi.`:'';
+    if(!Object.keys(anims).length)throw new Error('Tidak ada animasi yang berhasil dimuat dari ZIP ini.');
+    const c=newChar(side,manifest.character||file.name.replace(/\.zip$/i,''),anims);
+    rosterArr(side).push(c);
+    renderRoster();
+    loadReport(`✅ "${c.name}" dimuat (${Object.keys(anims).length} animasi) ke ${side==='ally'?'Party':'Musuh'}.`);
+  }catch(e){
+    loadReport(`❌ Gagal memuat "${file.name}": ${e.message}`,true);
+  }
 }
+$('zipAlly').addEventListener('change',e=>{if(e.target.files[0])loadZipCharacter(e.target.files[0],'ally');e.target.value='';});
+$('zipEnemy').addEventListener('change',e=>{if(e.target.files[0])loadZipCharacter(e.target.files[0],'enemy');e.target.value='';});
+$('phAlly').addEventListener('click',()=>addPlaceholder('ally'));
+$('phEnemy').addEventListener('click',()=>addPlaceholder('enemy'));
 
-/* ---- entitas ---- */
-function makeActor(side,x,hp){
-  return {side,x,homeX:x,hp,maxHp:hp,anim:'idle',t:0,once:false,flip:false,dead:false,fade:1,hurtT:0,
-          state:'idle',defending:false,kind:null,animKey:null,hitDone:false};
-}
-const P=makeActor('P',P0,100);
-const E=makeActor('E',E0,100);
+/* ---- state battle ---- */
+let combat={allies:[],enemies:[],initiative:[],qIndex:0,current:null,ended:false,mode:'setup',pendingKind:null};
 const floats=[];
-let itemsLeft=3, ended=false, turn='player', autoTimer=0;
-
-const baseFlipP=()=>!$('right').checked, baseFlipE=()=>$('right').checked;
-function baseFlip(a){return a.side==='P'?baseFlipP():baseFlipE();}
+const baseFlipAlly=()=>!$('right').checked, baseFlipEnemy=()=>$('right').checked;
+function baseFlip(a){return a.side==='ally'?baseFlipAlly():baseFlipEnemy();}
 function setA(a,anim,once){a.anim=anim;a.t=0;a.once=once;}
-function sprOf(a){return a.side==='P'?sprP:sprE;}
-function loopFor(a,anim,fallback){const s=sprOf(a)[anim];return s&&typeof s.meta.loop==='boolean'?s.meta.loop:fallback;}
+function allComb(){return [...combat.allies,...combat.enemies];}
+function findById(id){return allComb().find(c=>c.id===id);}
+function opponentsOf(a){return a.side==='ally'?combat.enemies:combat.allies;}
+function aliveOpponents(a){return opponentsOf(a).filter(o=>!o.dead);}
 
+function layout(){
+  function place(arr,region){
+    if(!arr.length)return;
+    const n=arr.length;
+    arr.forEach((c,i)=>{
+      const x=n===1?(region[0]+region[1])/2:region[0]+(region[1]-region[0])*i/(n-1);
+      c.x=x;c.homeX=x;
+    });
+  }
+  place(combat.allies,ALLY_REGION);
+  place(combat.enemies,ENEMY_REGION);
+}
+
+function loopFor(a,anim,fallback){const s=a.anims[anim];return s&&typeof s.meta.loop==='boolean'?s.meta.loop:fallback;}
 function sheetOf(a){
-  const dict=sprOf(a);
-  let s=dict[a.anim];
-  if(!s&&a.anim!=='idle')s=dict.idle;
-  if(!s&&a.side==='E')s=sprP.idle;
+  let s=a.anims[a.anim];
+  if(!s&&a.anim!=='idle')s=a.anims.idle;
   return s||null;
 }
 function frameInfo(a){
@@ -230,10 +226,8 @@ function frameIdx(a){
   const c=frameInfo(a),i=Math.floor(a.t/1000*c.fps);
   return a.once?Math.min(i,c.n-1):i%c.n;
 }
-/* hitbox (dari idle) dalam piksel kanvas, relatif ke sel frame */
 function hbOf(a){
-  let s=sprOf(a).idle;
-  if(!s&&a.side==='E')s=sprP.idle;
+  const s=a.anims.idle;
   if(!s)return {cw:CH,x:45,y:15,w:40,h:100};
   const m=s.meta,k=CH/m.frameHeight;
   const h=m.hitbox||{x:m.frameWidth*.3,y:m.frameHeight*.1,w:m.frameWidth*.4,h:m.frameHeight*.8};
@@ -245,19 +239,110 @@ function wbox(a){
   return {l,r:l+b.w,t,b:t+b.h};
 }
 
-/* ---- aksi & giliran ---- */
-const KIND_DMG={attack:[10,18],skill:[18,30]};
+/* ---- mulai / reset battle dari roster saat ini ---- */
+function startBattle(){
+  if(!allies.length)addPlaceholder('ally');
+  if(!enemies.length)addPlaceholder('enemy');
+  combat.allies=allies.map(c=>{c.hp=c.maxHp;c.dead=false;c.fade=1;c.defending=false;c.hurtT=0;c.state='idle';c.anim='idle';c.t=0;c.once=false;c.items=3;return c;});
+  combat.enemies=enemies.map(c=>{c.hp=c.maxHp;c.dead=false;c.fade=1;c.defending=false;c.hurtT=0;c.state='idle';c.anim='idle';c.t=0;c.once=false;c.items=3;return c;});
+  layout();
+  combat.ended=false;combat.mode='running';
+  buildInitiative();
+  advanceTurn();
+}
+$('startBtn').addEventListener('click',startBattle);
 
-function setMsg(s){$('msg').textContent=s;}
-function updateButtons(){
-  const on=turn==='player';
-  $('atk').disabled=!on;$('skl').disabled=!on;$('def').disabled=!on;
-  $('itm').disabled=!on||itemsLeft<=0;
-  $('itm').textContent='Item ('+itemsLeft+')';
+function buildInitiative(){
+  const alive=allComb().filter(c=>!c.dead);
+  alive.sort((a,b)=>(b.speed-a.speed)||(Math.random()-.5));
+  combat.initiative=alive.map(c=>c.id);
+  combat.qIndex=0;
+}
+function advanceTurn(){
+  checkGameEnd();if(combat.ended)return;
+  hideTargetBar();
+  while(combat.qIndex<combat.initiative.length){
+    const c=findById(combat.initiative[combat.qIndex]);
+    combat.qIndex++;
+    if(c&&!c.dead){combat.current=c;startTurn(c);return;}
+  }
+  buildInitiative();
+  if(!combat.initiative.length){checkGameEnd();return;}
+  advanceTurn();
+}
+function startTurn(c){
+  if(c.side==='ally'&&!$('auto').checked){
+    combat.mode='awaiting_player';
+    setMsg('Giliran '+c.name+'. Pilih aksi.');
+  }else{
+    combat.mode='busy';
+    setMsg('Giliran '+c.name+'...');
+    setTimeout(()=>aiAction(c),450);
+  }
+  updateButtons();
+}
+function aiAction(c){
+  if(combat.ended)return;
+  const opps=aliveOpponents(c);
+  if(!opps.length){checkGameEnd();return;}
+  const target=opps.reduce((w,o)=>o.hp<w.hp?o:w,opps[0]);
+  let kind;
+  if(c.hp<c.maxHp*0.35&&c.items>0&&Math.random()<0.5)kind='item';
+  else if(Math.random()<0.2)kind='defend';
+  else if(Math.random()<0.4)kind='skill';
+  else kind='attack';
+  setMsg(c.name+(kind==='attack'?' menyerang!':kind==='skill'?' memakai skill!':kind==='defend'?' bertahan.':' pakai item.'));
+  doAction(c,target,kind);
 }
 
+/* ---- UI aksi & target ---- */
+function updateButtons(){
+  const on=combat.mode==='awaiting_player';
+  $('atk').disabled=!on;$('skl').disabled=!on;$('def').disabled=!on;
+  $('itm').disabled=!on||(combat.current&&combat.current.items<=0);
+  $('itm').textContent='Item ('+(combat.current?combat.current.items:0)+')';
+}
+function hideTargetBar(){$('targetBar').hidden=true;$('targetBar').textContent='';combat.pendingKind=null;}
+function chooseAction(kind){
+  if(combat.mode!=='awaiting_player')return;
+  const c=combat.current;
+  if(kind==='defend'||kind==='item'){
+    if(kind==='item'&&c.items<=0)return;
+    combat.mode='busy';updateButtons();
+    setMsg(c.name+(kind==='defend'?' bertahan.':' pakai item.'));
+    doAction(c,null,kind);
+    return;
+  }
+  const opps=aliveOpponents(c);
+  if(opps.length<=1){
+    combat.mode='busy';updateButtons();
+    setMsg(c.name+(kind==='attack'?' menyerang!':' memakai skill!'));
+    doAction(c,opps[0]||null,kind);
+    return;
+  }
+  combat.pendingKind=kind;
+  const bar=$('targetBar');bar.hidden=false;bar.textContent='';
+  const lbl=document.createElement('span');lbl.textContent='Pilih target: ';lbl.style.fontWeight='700';bar.appendChild(lbl);
+  opps.forEach(o=>{
+    const b=document.createElement('button');b.className='btn sm tgt';b.textContent=o.name+' ('+o.hp+' HP)';
+    b.addEventListener('click',()=>{
+      hideTargetBar();combat.mode='busy';updateButtons();
+      setMsg(c.name+(kind==='attack'?' menyerang '+o.name+'!':' memakai skill ke '+o.name+'!'));
+      doAction(c,o,kind);
+    });
+    bar.appendChild(b);
+  });
+}
+$('atk').addEventListener('click',()=>chooseAction('attack'));
+$('skl').addEventListener('click',()=>chooseAction('skill'));
+$('def').addEventListener('click',()=>chooseAction('defend'));
+$('itm').addEventListener('click',()=>chooseAction('item'));
+cv.addEventListener('click',()=>{if(combat.mode==='awaiting_player')$('atk').click();});
+
+/* ---- eksekusi aksi ---- */
+const KIND_DMG={attack:[10,18],skill:[18,30]};
 function resolveDamage(attacker,target,dmgRange){
-  if(ended)return;
+  if(combat.ended||!target)return;
   let dmg=dmgRange[0]+Math.floor(Math.random()*(dmgRange[1]-dmgRange[0]+1));
   if(target.defending){dmg=Math.round(dmg*0.4);target.defending=false;}
   target.hp=Math.max(0,target.hp-dmg);
@@ -269,9 +354,8 @@ function resolveDamage(attacker,target,dmgRange){
     target.state='hurtReact';setA(target,'hurt',!loopFor(target,'hurt',false));
   }
 }
-
 function doAction(a,opp,kind){
-  a.kind=kind;a.hitDone=false;
+  a.kind=kind;a.hitDone=false;a.target=opp;
   if(kind==='attack'){
     a.animKey='attack';a.state='walkIn';setA(a,'walk',!loopFor(a,'walk',true));
   }else if(kind==='skill'){
@@ -281,78 +365,41 @@ function doAction(a,opp,kind){
     a.state='acting';setA(a,'defend',!loopFor(a,'defend',false));a.defending=true;
     floats.push({x:a.x,y:GY-.92*CH,t:0,txt:'Bertahan',color:'#4da3ff'});
   }else if(kind==='item'){
-    a.state='acting';setA(a,'item',!loopFor(a,'item',false));
+    a.state='acting';setA(a,'item',!loopFor(a,'item',false));a.items--;
     const heal=25;a.hp=Math.min(a.maxHp,a.hp+heal);
     floats.push({x:a.x,y:GY-.92*CH,t:0,txt:'+'+heal,color:'#4de1c1'});
   }
 }
-
 function finishAction(a){
-  if(ended)return;
-  if(a===P){
-    if(E.dead){turn='busy';updateButtons();return;}
-    turn='enemy';updateButtons();setMsg('Giliran musuh...');setTimeout(enemyTurn,500);
-  }else{
-    if(P.dead){turn='busy';updateButtons();return;}
-    turn='player';updateButtons();setMsg('Giliranmu. Pilih aksi.');
-  }
-}
-
-function enemyTurn(){
-  if(ended)return;
-  turn='busy';updateButtons();
-  const useSkill=Math.random()<0.4;
-  setMsg(useSkill?'Musuh memakai skill!':'Musuh menyerang!');
-  doAction(E,P,useSkill?'skill':'attack');
-}
-
-function autoPlayerAction(){
-  if(turn!=='player')return;
-  let action;
-  if(P.hp<40&&itemsLeft>0&&Math.random()<0.5)action='item';
-  else if(Math.random()<0.2)action='defend';
-  else if(Math.random()<0.4)action='skill';
-  else action='attack';
-  $(action==='attack'?'atk':action==='skill'?'skl':action==='defend'?'def':'itm').click();
+  if(combat.ended)return;
+  advanceTurn();
 }
 
 function checkGameEnd(){
-  if(ended)return;
-  if(E.state==='dead'){
-    ended=true;turn='over';
-    P.state='celebrating';setA(P,'victory',!loopFor(P,'victory',false));
-    setMsg('Menang! Musuh dikalahkan.');
-    $('restart').hidden=false;updateButtons();
-  }else if(P.state==='dead'){
-    ended=true;turn='over';
+  if(combat.ended)return;
+  if(combat.mode==='setup')return;
+  const enemiesLeft=combat.enemies.some(e=>!e.dead);
+  const alliesLeft=combat.allies.some(e=>!e.dead);
+  if(!enemiesLeft){
+    combat.ended=true;combat.mode='over';
+    combat.allies.filter(a=>!a.dead).forEach(a=>{a.state='celebrating';setA(a,'victory',!loopFor(a,'victory',false));});
+    setMsg('Menang! Semua musuh dikalahkan.');
+    hideTargetBar();updateButtons();
+  }else if(!alliesLeft){
+    combat.ended=true;combat.mode='over';
     setMsg('Kalah... coba lagi?');
-    $('restart').hidden=false;updateButtons();
+    hideTargetBar();updateButtons();
   }
 }
 
-$('atk').addEventListener('click',()=>{if(turn!=='player')return;turn='busy';updateButtons();setMsg('Kamu menyerang!');doAction(P,E,'attack');});
-$('skl').addEventListener('click',()=>{if(turn!=='player')return;turn='busy';updateButtons();setMsg('Kamu memakai skill!');doAction(P,E,'skill');});
-$('def').addEventListener('click',()=>{if(turn!=='player')return;turn='busy';updateButtons();setMsg('Kamu bertahan.');doAction(P,E,'defend');});
-$('itm').addEventListener('click',()=>{if(turn!=='player'||itemsLeft<=0)return;turn='busy';updateButtons();itemsLeft--;setMsg('Kamu pakai item.');doAction(P,E,'item');});
-cv.addEventListener('click',()=>$('atk').click());
-
-$('restart').addEventListener('click',()=>{
-  [P,E].forEach(a=>{
-    a.hp=a.maxHp;a.dead=false;a.fade=1;a.defending=false;a.hurtT=0;a.x=a.homeX;
-    a.state='idle';setA(a,'idle',!loopFor(a,'idle',true));
-  });
-  itemsLeft=3;ended=false;turn='player';autoTimer=0;
-  $('restart').hidden=true;
-  setMsg('Giliranmu. Pilih aksi.');
-  updateButtons();
-});
-
 /* ---- fisika giliran (jalan-serang-jalan balik untuk Attack) ---- */
-function stepMelee(a,opp,dt){
+function stepMelee(a,dt){
+  const opp=a.target;
+  if(!opp){a.state='idle';setA(a,'idle',!loopFor(a,'idle',true));finishAction(a);return;}
   const sp=230*dt/1000;
   if(a.state==='walkIn'){
     const ab=wbox(a),ob=wbox(opp);
-    if(a.side==='P'){
+    if(a.side==='ally'){
       const stop=ob.l-12;
       if(ab.r+sp>=stop){a.x+=stop-ab.r;a.state='attacking';setA(a,a.animKey,!loopFor(a,a.animKey,false));}
       else a.x+=sp;
@@ -366,7 +413,7 @@ function stepMelee(a,opp,dt){
     if(!a.hitDone&&i>=Math.floor(c.n*.5)){a.hitDone=true;resolveDamage(a,opp,KIND_DMG[a.kind]);}
     if(a.t/1000*c.fps>=c.n){a.state='walkBack';setA(a,'walk',!loopFor(a,'walk',true));}
   }else if(a.state==='walkBack'){
-    if(a.side==='P'){
+    if(a.side==='ally'){
       a.x-=sp;
       if(a.x<=a.homeX){a.x=a.homeX;a.state='idle';setA(a,'idle',!loopFor(a,'idle',true));finishAction(a);}
     }else{
@@ -385,34 +432,23 @@ function stepDying(a){
 }
 
 function update(dt){
-  P.t+=dt;E.t+=dt;
-  [P,E].forEach(a=>{a.flip=(a.state==='walkBack')?!baseFlip(a):baseFlip(a);});
-  if(P.hurtT>0)P.hurtT=Math.max(0,P.hurtT-dt);
-  if(E.hurtT>0)E.hurtT=Math.max(0,E.hurtT-dt);
-
-  [P,E].forEach(a=>{
+  if(combat.mode==='setup')return;
+  const all=allComb();
+  all.forEach(a=>{a.t+=dt;a.flip=(a.state==='walkBack')?!baseFlip(a):baseFlip(a);});
+  all.forEach(a=>{if(a.hurtT>0)a.hurtT=Math.max(0,a.hurtT-dt);});
+  all.forEach(a=>{
     if(a.state==='hurtReact'){
       const c=frameInfo(a);
       if(a.t/1000*c.fps>=c.n){a.state='idle';setA(a,'idle',!loopFor(a,'idle',true));}
     }
   });
-
-  if(P.state==='walkIn'||P.state==='attacking'||P.state==='walkBack')stepMelee(P,E,dt);
-  if(E.state==='walkIn'||E.state==='attacking'||E.state==='walkBack')stepMelee(E,P,dt);
-  if(P.state==='acting')stepActing(P);
-  if(E.state==='acting')stepActing(E);
-  if(P.state==='dying')stepDying(P);
-  if(E.state==='dying')stepDying(E);
-  if(P.state==='dead')P.fade=Math.max(0,P.fade-dt/700);
-  if(E.state==='dead')E.fade=Math.max(0,E.fade-dt/700);
-
+  all.forEach(a=>{
+    if(a.state==='walkIn'||a.state==='attacking'||a.state==='walkBack')stepMelee(a,dt);
+    else if(a.state==='acting')stepActing(a);
+    else if(a.state==='dying')stepDying(a);
+    else if(a.state==='dead')a.fade=Math.max(0,a.fade-dt/700);
+  });
   checkGameEnd();
-
-  if(turn==='player'&&$('auto').checked){
-    autoTimer+=dt;
-    if(autoTimer>700){autoTimer=0;autoPlayerAction();}
-  }else autoTimer=0;
-
   floats.forEach(f=>{f.t+=dt;f.y-=dt*.04;});
   while(floats.length&&floats[0].t>900)floats.shift();
 }
@@ -420,7 +456,7 @@ function update(dt){
 /* ---- gambar ---- */
 function placeholder(a,i){
   const top=GY-.92*CH,bob=Math.sin(i/8*Math.PI*2)*(a.anim==='walk'?5:2);
-  ctx.fillStyle=a.side==='E'?'#ff6b6b':'#4da3ff';ctx.fillRect(-20,top+15+bob,40,100);
+  ctx.fillStyle=a.side==='enemy'?'#ff6b6b':'#4da3ff';ctx.fillRect(-20,top+15+bob,40,100);
   ctx.fillStyle='#fff';ctx.fillRect(6,top+30+bob,8,8);
   if(a.anim==='attack'){ctx.strokeStyle='#ffd166';ctx.lineWidth=6;ctx.beginPath();ctx.arc(20,top+60,50,-1.2+i*.35,-.4+i*.35);ctx.stroke();}
   else if(a.anim==='skill'){ctx.strokeStyle='#8a7dff';ctx.lineWidth=4;ctx.beginPath();ctx.arc(0,top+55,30+i*3,0,Math.PI*2);ctx.stroke();}
@@ -445,7 +481,9 @@ function drawBox(b){
   ctx.strokeRect(b.l,b.t,b.r-b.l,b.b-b.t);ctx.setLineDash([]);
 }
 function drawHP(a){
-  const w=90,h=8,bx=a.x-w/2,by=GY-.92*CH-20;
+  const w=76,h=7,bx=a.x-w/2,by=GY-.92*CH-26;
+  ctx.font='700 10px Manrope,sans-serif';ctx.textAlign='center';ctx.fillStyle='#dfe7fb';
+  ctx.fillText(a.name,a.x,by-4);
   ctx.fillStyle='#000a';ctx.fillRect(bx,by,w,h);
   const pct=Math.max(0,a.hp/a.maxHp);
   ctx.fillStyle=pct>0.5?'#4de1c1':pct>0.2?'#ffc93c':'#ff6b6b';
@@ -458,12 +496,17 @@ function draw(){
   ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
   ctx.fillStyle='#233252';ctx.fillRect(0,GY,W,H-GY);
   ctx.fillStyle='#2f4270';ctx.fillRect(0,GY,W,3);
-  drawActor(E);drawActor(P);
-  if($('hb').checked){drawBox(wbox(E));drawBox(wbox(P));}
-  drawHP(E);drawHP(P);
-  ctx.font='800 20px Manrope,sans-serif';ctx.textAlign='center';
-  floats.forEach(f=>{ctx.globalAlpha=Math.max(0,1-f.t/900);ctx.fillStyle=f.color||'#ffc93c';ctx.fillText(f.txt,f.x,f.y);});
-  ctx.globalAlpha=1;
+  if(combat.mode!=='setup'){
+    combat.enemies.forEach(drawActor);combat.allies.forEach(drawActor);
+    if($('hb').checked)allComb().forEach(a=>drawBox(wbox(a)));
+    allComb().forEach(drawHP);
+    ctx.font='800 20px Manrope,sans-serif';ctx.textAlign='center';
+    floats.forEach(f=>{ctx.globalAlpha=Math.max(0,1-f.t/900);ctx.fillStyle=f.color||'#ffc93c';ctx.fillText(f.txt,f.x,f.y);});
+    ctx.globalAlpha=1;
+  }else{
+    ctx.font='700 14px Manrope,sans-serif';ctx.textAlign='center';ctx.fillStyle='#93a1bd';
+    ctx.fillText('Susun party & musuh di bawah, lalu tekan "Mulai / Reset Battle".',W/2,H/2);
+  }
 }
 
 let last=performance.now();
@@ -471,7 +514,8 @@ function loop(now){
   const dt=Math.min(50,now-last);last=now;
   update(dt);draw();requestAnimationFrame(loop);
 }
-setMsg('Giliranmu. Pilih aksi.');
+renderRoster();
+setMsg('Susun party & musuh, lalu tekan "Mulai / Reset Battle".');
 updateButtons();
 requestAnimationFrame(loop);
 </script>
