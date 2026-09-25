@@ -116,13 +116,13 @@ function addPlaceholder(side){
   const arr=rosterArr(side);
   const name=(side==='ally'?'Ally ':'Musuh ')+(arr.length+1);
   arr.push(newChar(side,name,{}));
-  renderRoster();
+  renderRoster();layout();
 }
 function removeChar(side,id){
   const arr=rosterArr(side);
   const i=arr.findIndex(c=>c.id===id);
   if(i>-1)arr.splice(i,1);
-  renderRoster();
+  renderRoster();layout();
 }
 function renderRoster(){
   [['ally',$('rosterAlly')],['enemy',$('rosterEnemy')]].forEach(([side,box])=>{
@@ -176,7 +176,7 @@ async function loadZipCharacter(file,side){
     if(!Object.keys(anims).length)throw new Error('Tidak ada animasi yang berhasil dimuat dari ZIP ini.');
     const c=newChar(side,manifest.character||file.name.replace(/\.zip$/i,''),anims);
     rosterArr(side).push(c);
-    renderRoster();
+    renderRoster();layout();
     loadReport(`✅ "${c.name}" dimuat (${Object.keys(anims).length} animasi) ke ${side==='ally'?'Party':'Musuh'}.`);
   }catch(e){
     loadReport(`❌ Gagal memuat "${file.name}": ${e.message}`,true);
@@ -188,14 +188,14 @@ $('phAlly').addEventListener('click',()=>addPlaceholder('ally'));
 $('phEnemy').addEventListener('click',()=>addPlaceholder('enemy'));
 
 /* ---- state battle ---- */
-let combat={allies:[],enemies:[],initiative:[],qIndex:0,current:null,ended:false,mode:'setup',pendingKind:null};
+let combat={initiative:[],qIndex:0,current:null,ended:false,started:false,mode:'idle',pendingKind:null};
 const floats=[];
 const baseFlipAlly=()=>!$('right').checked, baseFlipEnemy=()=>$('right').checked;
 function baseFlip(a){return a.side==='ally'?baseFlipAlly():baseFlipEnemy();}
 function setA(a,anim,once){a.anim=anim;a.t=0;a.once=once;}
-function allComb(){return [...combat.allies,...combat.enemies];}
+function allComb(){return [...allies,...enemies];}
 function findById(id){return allComb().find(c=>c.id===id);}
-function opponentsOf(a){return a.side==='ally'?combat.enemies:combat.allies;}
+function opponentsOf(a){return a.side==='ally'?enemies:allies;}
 function aliveOpponents(a){return opponentsOf(a).filter(o=>!o.dead);}
 
 function layout(){
@@ -207,8 +207,8 @@ function layout(){
       c.x=x;c.homeX=x;
     });
   }
-  place(combat.allies,ALLY_REGION);
-  place(combat.enemies,ENEMY_REGION);
+  place(allies,ALLY_REGION);
+  place(enemies,ENEMY_REGION);
 }
 
 function loopFor(a,anim,fallback){const s=a.anims[anim];return s&&typeof s.meta.loop==='boolean'?s.meta.loop:fallback;}
@@ -243,10 +243,9 @@ function wbox(a){
 function startBattle(){
   if(!allies.length)addPlaceholder('ally');
   if(!enemies.length)addPlaceholder('enemy');
-  combat.allies=allies.map(c=>{c.hp=c.maxHp;c.dead=false;c.fade=1;c.defending=false;c.hurtT=0;c.state='idle';c.anim='idle';c.t=0;c.once=false;c.items=3;return c;});
-  combat.enemies=enemies.map(c=>{c.hp=c.maxHp;c.dead=false;c.fade=1;c.defending=false;c.hurtT=0;c.state='idle';c.anim='idle';c.t=0;c.once=false;c.items=3;return c;});
+  allComb().forEach(c=>{c.hp=c.maxHp;c.dead=false;c.fade=1;c.defending=false;c.hurtT=0;c.state='idle';c.anim='idle';c.t=0;c.once=false;c.items=3;});
   layout();
-  combat.ended=false;combat.mode='running';
+  combat.ended=false;combat.started=true;
   buildInitiative();
   advanceTurn();
 }
@@ -376,13 +375,12 @@ function finishAction(a){
 }
 
 function checkGameEnd(){
-  if(combat.ended)return;
-  if(combat.mode==='setup')return;
-  const enemiesLeft=combat.enemies.some(e=>!e.dead);
-  const alliesLeft=combat.allies.some(e=>!e.dead);
+  if(combat.ended||!combat.started)return;
+  const enemiesLeft=enemies.some(e=>!e.dead);
+  const alliesLeft=allies.some(e=>!e.dead);
   if(!enemiesLeft){
     combat.ended=true;combat.mode='over';
-    combat.allies.filter(a=>!a.dead).forEach(a=>{a.state='celebrating';setA(a,'victory',!loopFor(a,'victory',false));});
+    allies.filter(a=>!a.dead).forEach(a=>{a.state='celebrating';setA(a,'victory',!loopFor(a,'victory',false));});
     setMsg('Menang! Semua musuh dikalahkan.');
     hideTargetBar();updateButtons();
   }else if(!alliesLeft){
@@ -432,8 +430,8 @@ function stepDying(a){
 }
 
 function update(dt){
-  if(combat.mode==='setup')return;
   const all=allComb();
+  if(!all.length)return;
   all.forEach(a=>{a.t+=dt;a.flip=(a.state==='walkBack')?!baseFlip(a):baseFlip(a);});
   all.forEach(a=>{if(a.hurtT>0)a.hurtT=Math.max(0,a.hurtT-dt);});
   all.forEach(a=>{
@@ -496,16 +494,18 @@ function draw(){
   ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
   ctx.fillStyle='#233252';ctx.fillRect(0,GY,W,H-GY);
   ctx.fillStyle='#2f4270';ctx.fillRect(0,GY,W,3);
-  if(combat.mode!=='setup'){
-    combat.enemies.forEach(drawActor);combat.allies.forEach(drawActor);
-    if($('hb').checked)allComb().forEach(a=>drawBox(wbox(a)));
-    allComb().forEach(drawHP);
+  const all=allComb();
+  if(all.length){
+    enemies.forEach(drawActor);allies.forEach(drawActor);
+    if($('hb').checked)all.forEach(a=>drawBox(wbox(a)));
+    all.forEach(drawHP);
     ctx.font='800 20px Manrope,sans-serif';ctx.textAlign='center';
     floats.forEach(f=>{ctx.globalAlpha=Math.max(0,1-f.t/900);ctx.fillStyle=f.color||'#ffc93c';ctx.fillText(f.txt,f.x,f.y);});
     ctx.globalAlpha=1;
-  }else{
-    ctx.font='700 14px Manrope,sans-serif';ctx.textAlign='center';ctx.fillStyle='#93a1bd';
-    ctx.fillText('Susun party & musuh di bawah, lalu tekan "Mulai / Reset Battle".',W/2,H/2);
+  }
+  if(!combat.started){
+    ctx.font='700 12.5px Manrope,sans-serif';ctx.textAlign='center';ctx.fillStyle='#93a1bd';
+    ctx.fillText(all.length?'Tekan "Mulai / Reset Battle" untuk memulai.':'Susun party & musuh di bawah, lalu tekan "Mulai / Reset Battle".',W/2,20);
   }
 }
 
