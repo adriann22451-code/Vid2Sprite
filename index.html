@@ -107,6 +107,7 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
         <optgroup label="Lainnya"><option value="interact">Interact (buka peti, bicara)</option><option value="levelup">Level up (naik level)</option></optgroup>
       </select><small id="thint" style="font-size:12.5px"></small></label>
     </div>
+    <label class="sw"><input type="checkbox" id="tloop"><span class="tg"></span><b>Ulang terus (loop)</b><small>Aktif = animasi diputar berulang (idle, walk, dll). Nonaktif = sekali putar lalu berhenti (attack, death, dll)</small></label>
     <h3>Ambil frame</h3>
     <div class="fields">
       <label class="f">Mulai (detik)<input type="number" id="start" value="0" min="0" step="0.1"></label>
@@ -155,6 +156,7 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
       <label class="f">Kolom sheet (0 = otomatis)<input type="number" id="icols" value="0" min="0"></label>
       <label class="f" style="grid-column:span 2">Intensitas gerak<input type="range" id="iint" min="10" max="100" value="50"></label>
     </div>
+    <label class="sw"><input type="checkbox" id="iloop" checked><span class="tg"></span><b>Ulang terus (loop)</b><small>Aktif untuk idle/walk, biasanya nonaktif untuk death</small></label>
     <label class="sw"><input type="checkbox" id="ikey"><span class="tg"></span><b>Hapus background (chroma key)</b><small>Untuk gambar dengan background polos</small></label>
     <div id="itolw" style="display:none;flex-direction:column;gap:12px;margin-bottom:14px">
       <label class="f">Warna background<select id="imode"><option value="auto">Otomatis (pojok kiri atas)</option><option value="green">Hijau (green screen)</option><option value="blue">Biru (blue screen)</option><option value="magenta">Magenta</option><option value="custom">Pilih warna sendiri</option></select></label>
@@ -274,7 +276,7 @@ $('gen').onclick=async()=>{
       msg(`Mengekstrak frame ${i+1}/${n}…`);
     }
     base=vbase+'_'+$('atype').value;
-    meta={image:base+'_sheet.png',animation:$('atype').value,frameWidth:fw,frameHeight:fh,columns:cols,rows,frameCount:n,fps:efps,frames};
+    meta={image:base+'_sheet.png',animation:$('atype').value,frameWidth:fw,frameHeight:fh,columns:cols,rows,frameCount:n,fps:efps,loop:$('tloop').checked,frames};
     frameBlobs=blobs;
     $('out').style.display='block';
     msg(`Selesai: ${n} frame, sheet ${sheet.width}×${sheet.height} px.`);
@@ -325,6 +327,7 @@ $('djson').onclick=()=>{ if(meta) save(base+'_sheet.json',JSON.stringify(meta,nu
 /* ===== Animasi dari gambar ===== */
 let img=null,ibase='char';
 const iMsg=t=>$('imsg').textContent=t;
+$('anim').onchange=()=>{$('iloop').checked=$('anim').value!=='death'};
 $('ifile').onchange=e=>{
   const f=e.target.files[0]; if(!f)return;
   const im=new Image();
@@ -401,7 +404,7 @@ $('igen').onclick=async()=>{
       frames.push({index:i,x:fx,y:fy,w:cs,h:cs});
     }
     base=ibase+'_'+anim;
-    meta={image:base+'_sheet.png',animation:anim,frameWidth:cs,frameHeight:cs,columns:cols,rows,frameCount:n,fps,frames};
+    meta={image:base+'_sheet.png',animation:anim,frameWidth:cs,frameHeight:cs,columns:cols,rows,frameCount:n,fps,loop:$('iloop').checked,frames};
     frameBlobs=blobs;
     $('out').style.display='block';
     iMsg(`Selesai: animasi ${anim}, ${n} frame. Lihat hasilnya di bawah.`);
@@ -479,7 +482,7 @@ const basePlay=window.play;
 window.play=function(){
   basePlay();
   const st=g('stats'); st.textContent='';
-  [`${meta.frameCount} frame`,`${meta.frameWidth}×${meta.frameHeight} px`,`grid ${meta.columns}×${meta.rows}`,`${meta.fps} fps`].forEach(t=>{
+  [`${meta.frameCount} frame`,`${meta.frameWidth}×${meta.frameHeight} px`,`grid ${meta.columns}×${meta.rows}`,`${meta.fps} fps`,meta.loop?'loop':'sekali putar'].forEach(t=>{
     const c=document.createElement('span'); c.className='chip'; c.textContent=t; st.appendChild(c);
   });
   scan();
@@ -518,7 +521,8 @@ const T={
 function applyType(){
   const t=T[g('atype').value]; if(!t)return;
   g('count').value=t.n;
-  g('thint').textContent=`Saran: ${t.n} frame, ${t.loop?'diulang terus':'sekali putar'}. ${t.tip}`;
+  g('tloop').checked=t.loop;
+  g('thint').textContent=`Saran: ${t.n} frame, ${t.loop?'diulang terus':'sekali putar'}. Kedua nilai ini bisa kamu ubah sendiri. ${t.tip}`;
 }
 g('atype').addEventListener('change',applyType); applyType();
 
@@ -539,7 +543,8 @@ g('padd').onclick=async()=>{
   const type=meta.animation||'idle';
   const sh=await new Promise(r=>sheet.toBlob(r,'image/png'));
   const m=JSON.parse(JSON.stringify(meta));
-  m.image=type+'_sheet.png'; m.loop=T[type]?T[type].loop:false;
+  m.image=type+'_sheet.png';
+  if(typeof m.loop!=='boolean')m.loop=T[type]?T[type].loop:false;
   pack.set(type,{meta:m,frames:frameBlobs.slice(),sheet:sh});
   renderPack();
   g('pinfo').textContent=`${type} ditambahkan. ${pack.size} animasi di koleksi.`;
