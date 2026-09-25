@@ -198,13 +198,14 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
   </div>
   <div class="hb">
     <h3>Koleksi karakter</h3>
-    <p class="s" style="margin:0 0 12px;color:var(--mu);font-size:13.5px">Simpan tiap animasi ke koleksi (ganti video atau jenis, generate lagi, simpan lagi), lalu unduh semuanya sebagai satu paket berisi sheet, frame, JSON, dan manifest.</p>
+    <p class="s" style="margin:0 0 12px;color:var(--mu);font-size:13.5px">Simpan tiap animasi ke koleksi (ganti video atau jenis, generate lagi, simpan lagi), lalu unduh semuanya sebagai satu paket berisi sheet, frame, JSON, dan manifest. Koleksi tersimpan otomatis di perangkat ini, jadi aman kalau halaman ke-refresh.</p>
     <div class="fields"><label class="f" style="grid-column:1/-1">Nama karakter<input type="text" id="pname" value="karakter" maxlength="40" autocomplete="off"></label></div>
     <div class="chips" id="plist" style="margin-bottom:10px"></div>
     <div class="status" id="pinfo" style="margin:0 0 12px">Koleksi masih kosong.</div>
     <div class="acts">
       <button class="btn" id="padd">Tambah animasi ini ke koleksi</button>
       <button class="btn sec" id="dpack" disabled>Unduh koleksi (ZIP)</button>
+      <button class="btn sec" id="pclear" disabled>Kosongkan koleksi</button>
     </div>
   </div>
 </section>
@@ -526,16 +527,61 @@ function applyType(){
 }
 g('atype').addEventListener('change',applyType); applyType();
 
+/* ---- autosave koleksi ke IndexedDB (gambar disimpan sebagai Blob, tidak muat di localStorage) ---- */
+const IDB_NAME='v2s',IDB_STORE='pack';
+function idbOpen(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(IDB_NAME,1);
+    r.onupgradeneeded=()=>r.result.createObjectStore(IDB_STORE);
+    r.onsuccess=()=>res(r.result);
+    r.onerror=()=>rej(r.error);
+  });
+}
+async function idbSet(k,v){
+  try{
+    const db=await idbOpen();
+    await new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(v,k);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});
+  }catch(e){}
+}
+async function idbDel(k){
+  try{
+    const db=await idbOpen();
+    await new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).delete(k);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});
+  }catch(e){}
+}
+async function idbClear(){
+  try{
+    const db=await idbOpen();
+    await new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).clear();tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});
+  }catch(e){}
+}
+async function idbAll(){
+  try{
+    const db=await idbOpen();
+    return await new Promise((res,rej)=>{
+      const tx=db.transaction(IDB_STORE,'readonly'),st=tx.objectStore(IDB_STORE),out=[];
+      const req=st.openCursor();
+      req.onsuccess=()=>{const c=req.result;if(c){out.push([c.key,c.value]);c.continue()}else res(out)};
+      req.onerror=()=>rej(req.error);
+    });
+  }catch(e){return []}
+}
+try{
+  g('pname').value=localStorage.getItem('v2s_pname')||g('pname').value;
+  g('pname').addEventListener('input',()=>{try{localStorage.setItem('v2s_pname',g('pname').value)}catch(e){}});
+}catch(e){}
+
 const pack=new Map();
 function renderPack(){
   const box=g('plist'); box.textContent='';
   pack.forEach((v,k)=>{
     const c=document.createElement('span'); c.className='chip'; c.textContent=`${k}: ${v.meta.frames.length} frame`;
     const x=document.createElement('button'); x.type='button'; x.className='chipx'; x.textContent='×'; x.setAttribute('aria-label','Hapus '+k);
-    x.onclick=()=>{pack.delete(k);renderPack()};
+    x.onclick=()=>{pack.delete(k);idbDel(k);renderPack()};
     c.appendChild(x); box.appendChild(c);
   });
   g('dpack').disabled=!pack.size;
+  g('pclear').disabled=!pack.size;
   g('pinfo').textContent=pack.size?`${pack.size} animasi di koleksi.`:'Koleksi masih kosong.';
 }
 g('padd').onclick=async()=>{
@@ -545,10 +591,24 @@ g('padd').onclick=async()=>{
   const m=JSON.parse(JSON.stringify(meta));
   m.image=type+'_sheet.png';
   if(typeof m.loop!=='boolean')m.loop=T[type]?T[type].loop:false;
-  pack.set(type,{meta:m,frames:frameBlobs.slice(),sheet:sh});
+  const entry={meta:m,frames:frameBlobs.slice(),sheet:sh};
+  pack.set(type,entry);
+  idbSet(type,entry);
   renderPack();
   g('pinfo').textContent=`${type} ditambahkan. ${pack.size} animasi di koleksi.`;
 };
+g('pclear').onclick=async()=>{
+  if(!pack.size)return;
+  if(!confirm('Hapus semua animasi di koleksi ini? Tindakan ini tidak bisa dibatalkan.'))return;
+  pack.clear(); await idbClear(); renderPack();
+};
+(async()=>{
+  const rows=await idbAll();
+  if(!rows.length)return;
+  rows.forEach(([k,v])=>pack.set(k,v));
+  renderPack();
+  g('pinfo').textContent=`${pack.size} animasi dipulihkan dari penyimpanan lokal perangkat ini.`;
+})();
 g('dpack').onclick=async()=>{
   if(!pack.size)return;
   if(!window.JSZip){g('pinfo').textContent='Library ZIP gagal dimuat. Muat ulang halaman.';return}
