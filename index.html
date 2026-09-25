@@ -115,6 +115,10 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
       <label class="f">FPS<input type="number" id="fps" value="12" min="1" max="60"></label>
       <label class="f">Jumlah frame (0 = pakai FPS)<input type="number" id="count" value="0" min="0" max="500"></label>
     </div>
+    <div class="fields" style="margin-top:-6px">
+      <button class="btn sec" type="button" id="setStart" style="grid-column:span 2" disabled>⏱ Pakai posisi video sbg awal</button>
+      <button class="btn sec" type="button" id="setEnd" style="grid-column:span 2" disabled>⏱ Pakai posisi video sbg akhir</button>
+    </div>
     <h3>Ukuran dan susunan</h3>
     <div class="fields">
       <label class="f">Lebar frame (px)<input type="number" id="w" value="128" min="8" max="2048"></label>
@@ -130,7 +134,12 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
       <label class="ck"><input type="checkbox" id="kdesp" checked> Kurangi sisa warna hijau/biru di tepi (despill)</label>
       <button class="btn sec full" id="ktest" type="button">Uji di frame video ini</button>
       <div class="chk" id="kwrap" hidden><canvas id="kprev" style="max-width:100%"></canvas></div>
+      <button class="btn sec full" id="kreapply" type="button" disabled>Terapkan ulang ke semua frame (tanpa proses ulang video)</button>
     </div>
+    <h3>Pratinjau rentang</h3>
+    <button class="btn sec full" id="ptest" type="button" disabled>Pratinjau frame dalam rentang ini</button>
+    <p class="s" style="margin:8px 0 0;color:var(--mu);font-size:12.5px">Cek dulu apakah rentang, ukuran, dan hapus-background sudah pas sebelum proses penuh (yang bisa makan waktu untuk video panjang).</p>
+    <div class="chk" id="pstrip" hidden style="display:flex;gap:8px;padding:10px;overflow-x:auto;margin-top:10px"></div>
     <button class="btn full" id="gen" disabled>Buat sprite sheet</button>
     <div class="status" id="msg" role="status">Pilih video dulu.</div>
   </div>
@@ -218,7 +227,20 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
 const $=id=>document.getElementById(id);
 const v=$('v'),sheet=$('sheet'),prev=$('prev');
 let vbase='sprite',frameBlobs=[],url=null,base='sprite',meta=null,timer=null,busy=false;
+let rawVideoFrames=[];
 const msg=t=>$('msg').textContent=t;
+
+/* pilih jumlah kolom yang meminimalkan sel kosong di grid sekaligus menjaga tekstur akhir tidak terlalu memanjang */
+function bestCols(n,fw,fh){
+  let best=Math.ceil(Math.sqrt(n)),bestScore=Infinity;
+  for(let c=1;c<=n;c++){
+    const r=Math.ceil(n/c),waste=r*c-n;
+    const tw=c*fw,th=r*fh,aspect=Math.max(tw,th)/Math.min(tw,th);
+    const score=waste+(aspect-1)*n*0.15;
+    if(score<bestScore){bestScore=score;best=c;}
+  }
+  return best;
+}
 
 $('key').onchange=e=>$('tolw').style.display=e.target.checked?'flex':'none';
 
@@ -226,12 +248,16 @@ $('file').onchange=e=>{
   const f=e.target.files[0]; if(!f)return;
   if(url)URL.revokeObjectURL(url);
   url=URL.createObjectURL(f); base=vbase=f.name.replace(/\.[^.]+$/,'')||'sprite';
+  rawVideoFrames=[]; $('kreapply').disabled=true;
+  $('setStart').disabled=true; $('setEnd').disabled=true; $('ptest').disabled=true;
+  $('pstrip').hidden=true; $('pstrip').textContent='';
   $('gen').disabled=true; msg('Memuat video…'); v.src=url;
 };
 v.onloadeddata=()=>{
   $('end').value=v.duration.toFixed(2); $('start').value=0;
   $('w').value=Math.min(+$('w').value||128,v.videoWidth);
   updH(); $('gen').disabled=false;
+  $('setStart').disabled=false; $('setEnd').disabled=false; $('ptest').disabled=false;
   msg(`Video ${v.videoWidth}×${v.videoHeight}, ${v.duration.toFixed(1)} dtk. Atur lalu tekan Buat.`);
 };
 v.onerror=()=>msg('Video tidak bisa dibaca di browser ini.');
@@ -241,6 +267,49 @@ $('w').oninput=updH;
 const seek=t=>new Promise(r=>{
   if(Math.abs(v.currentTime-t)<0.0005){r();return}
   v.onseeked=()=>r(); v.currentTime=t;
+});
+
+$('setStart').addEventListener('click',()=>{
+  if(!v.videoWidth)return;
+  $('start').value=v.currentTime.toFixed(2);
+  if(+$('end').value<=+$('start').value)$('end').value=v.duration.toFixed(2);
+});
+$('setEnd').addEventListener('click',()=>{
+  if(!v.videoWidth)return;
+  $('end').value=v.currentTime.toFixed(2);
+});
+
+$('ptest').addEventListener('click',async()=>{
+  if(busy||!v.videoWidth)return;
+  busy=true; $('ptest').disabled=true;
+  try{
+    const s=Math.max(0,+$('start').value||0);
+    const e=Math.min(+$('end').value||v.duration,v.duration);
+    if(e<=s){msg('Waktu selesai harus lebih besar dari waktu mulai.');return}
+    const fw=Math.max(8,+$('w').value||128);
+    const fh=Math.max(1,Math.round(fw*v.videoHeight/v.videoWidth));
+    const key=$('key').checked;
+    const est=Math.floor(+$('count').value)||Math.round((e-s)*(+$('fps').value||12))||6;
+    const n=Math.max(2,Math.min(8,est));
+    const box=$('pstrip'); box.textContent=''; box.hidden=false;
+    v.pause();
+    for(let i=0;i<n;i++){
+      const t=Math.min(s+i*(e-s)/Math.max(1,n-1),v.duration-0.001);
+      await seek(t);
+      const c=document.createElement('canvas'); c.width=fw; c.height=fh;
+      const cx=c.getContext('2d',{willReadFrequently:true});
+      cx.drawImage(v,0,0,fw,fh);
+      if(key)chromaKey(cx,fw,fh,KV);
+      c.style.cssText='max-height:90px;width:auto;border-radius:6px';
+      const wrap=document.createElement('div');
+      wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:4px;flex:none';
+      const lbl=document.createElement('small'); lbl.style.cssText='color:var(--mu);font-size:11px';
+      lbl.textContent=t.toFixed(2)+'s';
+      wrap.append(c,lbl); box.appendChild(wrap);
+    }
+    msg(`Pratinjau ${n} contoh frame dari ${s.toFixed(2)}–${e.toFixed(2)} dtk. Kalau sudah pas, tekan Buat sprite sheet.`);
+  }catch(err){msg('Gagal pratinjau: '+(err.message||err))}
+  finally{busy=false;$('ptest').disabled=false}
 });
 
 $('gen').onclick=async()=>{
@@ -256,19 +325,21 @@ $('gen').onclick=async()=>{
     let n=cnt>0?cnt:Math.floor((e-s)*fps); n=Math.max(1,Math.min(n,500));
     const step=cnt>0?(e-s)/n:1/fps;
     const efps=cnt>0?Math.min(60,Math.max(1,Math.round(n/(e-s)))):fps;
-    let cols=+$('cols').value||Math.ceil(Math.sqrt(n)); cols=Math.min(cols,n);
+    let cols=+$('cols').value||bestCols(n,fw,fh); cols=Math.min(cols,n);
     const rows=Math.ceil(n/cols);
     if(cols*fw>16000||rows*fh>16000){msg('Sheet terlalu besar. Kecilkan lebar frame, FPS, atau durasi.');return}
+    const cacheRaw=(fw*fh*4*n)<=300*1024*1024; // ~300MB batas aman biar tidak membebani memori browser
     sheet.width=cols*fw; sheet.height=rows*fh;
     const sc=sheet.getContext('2d');
     const tmp=document.createElement('canvas'); tmp.width=fw; tmp.height=fh;
     const tc=tmp.getContext('2d',{willReadFrequently:true});
     const key=$('key').checked, tol=(+$('tol').value)*4.4;
-    const frames=[]; const blobs=[];
+    const frames=[]; const blobs=[]; const raws=[];
     v.pause();
     for(let i=0;i<n;i++){
       await seek(Math.min(s+i*step,v.duration-0.001));
       tc.clearRect(0,0,fw,fh); tc.drawImage(v,0,0,fw,fh);
+      raws.push(cacheRaw?tc.getImageData(0,0,fw,fh):null);
       if(key)chromaKey(tc,fw,fh,KV);
       blobs.push(await new Promise(r=>tmp.toBlob(r,'image/png')));
       const x=(i%cols)*fw,y=Math.floor(i/cols)*fh;
@@ -279,8 +350,10 @@ $('gen').onclick=async()=>{
     base=vbase+'_'+$('atype').value;
     meta={image:base+'_sheet.png',animation:$('atype').value,frameWidth:fw,frameHeight:fh,columns:cols,rows,frameCount:n,fps:efps,loop:$('tloop').checked,frames};
     frameBlobs=blobs;
+    rawVideoFrames=cacheRaw?raws:[];
+    $('kreapply').disabled=!cacheRaw;
     $('out').style.display='block';
-    msg(`Selesai: ${n} frame, sheet ${sheet.width}×${sheet.height} px.`);
+    msg(cacheRaw?`Selesai: ${n} frame, sheet ${sheet.width}×${sheet.height} px.`:`Selesai: ${n} frame, sheet ${sheet.width}×${sheet.height} px. (Ekstraksi ini terlalu besar untuk di-cache, jadi tombol "terapkan ulang" nonaktif — ubah pengaturan lalu proses ulang dari video kalau perlu ganti chroma key.)`);
     play();
   }catch(err){msg('Gagal: '+(err.message||err))}
   finally{busy=false;$('gen').disabled=false}
@@ -297,6 +370,32 @@ function play(){
     pc.clearRect(0,0,w,h); pc.drawImage(sheet,f.x,f.y,w,h,0,0,w,h); i++;
   },1000/fps);
 }
+
+async function rebuildFromRaw(){
+  if(!rawVideoFrames.length||!meta)return;
+  const key=$('key').checked,fw=meta.frameWidth,fh=meta.frameHeight;
+  const tmp=document.createElement('canvas'); tmp.width=fw; tmp.height=fh;
+  const tc=tmp.getContext('2d',{willReadFrequently:true});
+  const sc=sheet.getContext('2d'); const blobs=[];
+  for(let i=0;i<rawVideoFrames.length;i++){
+    tc.putImageData(rawVideoFrames[i],0,0);
+    if(key)chromaKey(tc,fw,fh,KV);
+    blobs.push(await new Promise(r=>tmp.toBlob(r,'image/png')));
+    const f=meta.frames[i];
+    sc.clearRect(f.x,f.y,fw,fh); sc.drawImage(tmp,f.x,f.y);
+    msg(`Menerapkan ulang ke frame ${i+1}/${rawVideoFrames.length}…`);
+  }
+  frameBlobs=blobs;
+  msg(`Diterapkan ulang: ${blobs.length} frame, tanpa proses ulang video.`);
+  play();
+}
+$('kreapply').addEventListener('click',async()=>{
+  if(busy||!rawVideoFrames.length)return;
+  busy=true; $('kreapply').disabled=true;
+  try{ await rebuildFromRaw(); }
+  catch(e){ msg('Gagal menerapkan ulang: '+(e.message||e)); }
+  finally{ busy=false; $('kreapply').disabled=false; }
+});
 
 async function save(filename,data){
   try{
@@ -346,7 +445,7 @@ $('igen').onclick=async()=>{
   try{
     const anim=$('anim').value,n=Math.max(2,Math.min(64,+$('icount').value||8));
     const cs=Math.max(16,+$('isize').value||128),fps=Math.max(1,+$('ifps').value||10),k=(+$('iint').value)/50;
-    let cols=+$('icols').value||Math.ceil(Math.sqrt(n)); cols=Math.min(cols,n);
+    let cols=+$('icols').value||bestCols(n,cs,cs); cols=Math.min(cols,n);
     const rows=Math.ceil(n/cols);
     if(cols*cs>16000||rows*cs>16000){iMsg('Sheet terlalu besar. Kecilkan ukuran atau jumlah frame.');return}
     const sc0=Math.min(1,512/Math.max(img.naturalWidth,img.naturalHeight));
