@@ -127,6 +127,7 @@ const baseFlipP=()=>!$('right').checked, baseFlipE=()=>$('right').checked;
 function baseFlip(a){return a.side==='P'?baseFlipP():baseFlipE();}
 function setA(a,anim,once){a.anim=anim;a.t=0;a.once=once;}
 function sprOf(a){return a.side==='P'?sprP:sprE;}
+function loopFor(a,anim,fallback){const s=sprOf(a)[anim];return s&&typeof s.meta.loop==='boolean'?s.meta.loop:fallback;}
 
 function sheetOf(a){
   const dict=sprOf(a);
@@ -178,24 +179,24 @@ function resolveDamage(attacker,target,dmgRange){
   target.hurtT=350;
   floats.push({x:target.x,y:GY-.92*CH,t:0,txt:'-'+dmg,color:'#ff6b6b'});
   if(target.hp<=0){
-    target.dead=true;target.state='dying';setA(target,'death',true);
+    target.dead=true;target.state='dying';setA(target,'death',!loopFor(target,'death',false));
   }else if(target.state==='idle'){
-    target.state='hurtReact';setA(target,'hurt',true);
+    target.state='hurtReact';setA(target,'hurt',!loopFor(target,'hurt',false));
   }
 }
 
 function doAction(a,opp,kind){
   a.kind=kind;a.hitDone=false;
   if(kind==='attack'){
-    a.animKey='attack';a.state='walkIn';setA(a,'walk',false);
+    a.animKey='attack';a.state='walkIn';setA(a,'walk',!loopFor(a,'walk',true));
   }else if(kind==='skill'){
-    a.state='acting';setA(a,'skill',true);
+    a.state='acting';setA(a,'skill',!loopFor(a,'skill',false));
     resolveDamage(a,opp,KIND_DMG.skill);
   }else if(kind==='defend'){
-    a.state='acting';setA(a,'defend',true);a.defending=true;
+    a.state='acting';setA(a,'defend',!loopFor(a,'defend',false));a.defending=true;
     floats.push({x:a.x,y:GY-.92*CH,t:0,txt:'Bertahan',color:'#4da3ff'});
   }else if(kind==='item'){
-    a.state='acting';setA(a,'item',true);
+    a.state='acting';setA(a,'item',!loopFor(a,'item',false));
     const heal=25;a.hp=Math.min(a.maxHp,a.hp+heal);
     floats.push({x:a.x,y:GY-.92*CH,t:0,txt:'+'+heal,color:'#4de1c1'});
   }
@@ -234,7 +235,7 @@ function checkGameEnd(){
   if(ended)return;
   if(E.state==='dead'){
     ended=true;turn='over';
-    P.state='celebrating';setA(P,'victory',true);
+    P.state='celebrating';setA(P,'victory',!loopFor(P,'victory',false));
     setMsg('Menang! Musuh dikalahkan.');
     $('restart').hidden=false;updateButtons();
   }else if(P.state==='dead'){
@@ -253,7 +254,7 @@ cv.addEventListener('click',()=>$('atk').click());
 $('restart').addEventListener('click',()=>{
   [P,E].forEach(a=>{
     a.hp=a.maxHp;a.dead=false;a.fade=1;a.defending=false;a.hurtT=0;a.x=a.homeX;
-    a.state='idle';setA(a,'idle',false);
+    a.state='idle';setA(a,'idle',!loopFor(a,'idle',true));
   });
   itemsLeft=3;ended=false;turn='player';autoTimer=0;
   $('restart').hidden=true;
@@ -268,30 +269,30 @@ function stepMelee(a,opp,dt){
     const ab=wbox(a),ob=wbox(opp);
     if(a.side==='P'){
       const stop=ob.l-12;
-      if(ab.r+sp>=stop){a.x+=stop-ab.r;a.state='attacking';setA(a,a.animKey,true);}
+      if(ab.r+sp>=stop){a.x+=stop-ab.r;a.state='attacking';setA(a,a.animKey,!loopFor(a,a.animKey,false));}
       else a.x+=sp;
     }else{
       const stop=ob.r+12;
-      if(ab.l-sp<=stop){a.x-=(ab.l-stop);a.state='attacking';setA(a,a.animKey,true);}
+      if(ab.l-sp<=stop){a.x-=(ab.l-stop);a.state='attacking';setA(a,a.animKey,!loopFor(a,a.animKey,false));}
       else a.x-=sp;
     }
   }else if(a.state==='attacking'){
     const c=frameInfo(a),i=frameIdx(a);
     if(!a.hitDone&&i>=Math.floor(c.n*.5)){a.hitDone=true;resolveDamage(a,opp,KIND_DMG[a.kind]);}
-    if(a.t/1000*c.fps>=c.n){a.state='walkBack';setA(a,'walk',false);}
+    if(a.t/1000*c.fps>=c.n){a.state='walkBack';setA(a,'walk',!loopFor(a,'walk',true));}
   }else if(a.state==='walkBack'){
     if(a.side==='P'){
       a.x-=sp;
-      if(a.x<=a.homeX){a.x=a.homeX;a.state='idle';setA(a,'idle',false);finishAction(a);}
+      if(a.x<=a.homeX){a.x=a.homeX;a.state='idle';setA(a,'idle',!loopFor(a,'idle',true));finishAction(a);}
     }else{
       a.x+=sp;
-      if(a.x>=a.homeX){a.x=a.homeX;a.state='idle';setA(a,'idle',false);finishAction(a);}
+      if(a.x>=a.homeX){a.x=a.homeX;a.state='idle';setA(a,'idle',!loopFor(a,'idle',true));finishAction(a);}
     }
   }
 }
 function stepActing(a){
   const c=frameInfo(a);
-  if(a.t/1000*c.fps>=c.n){a.state='idle';setA(a,'idle',false);finishAction(a);}
+  if(a.t/1000*c.fps>=c.n){a.state='idle';setA(a,'idle',!loopFor(a,'idle',true));finishAction(a);}
 }
 function stepDying(a){
   const c=frameInfo(a);
@@ -307,7 +308,7 @@ function update(dt){
   [P,E].forEach(a=>{
     if(a.state==='hurtReact'){
       const c=frameInfo(a);
-      if(a.t/1000*c.fps>=c.n){a.state='idle';setA(a,'idle',false);}
+      if(a.t/1000*c.fps>=c.n){a.state='idle';setA(a,'idle',!loopFor(a,'idle',true));}
     }
   });
 
