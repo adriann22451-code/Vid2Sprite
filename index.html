@@ -133,7 +133,7 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
       <label class="f">Kehalusan tepi<input type="range" id="ksoft" min="1" max="60" value="15"></label>
       <label class="ck"><input type="checkbox" id="kdesp" checked> Kurangi sisa warna hijau/biru di tepi (despill)</label>
       <button class="btn sec full" id="ktest" type="button">Uji di frame video ini</button>
-      <div class="chk" id="kwrap" hidden><canvas id="kprev" style="max-width:100%"></canvas></div>
+      <div class="chk" id="kwrap" hidden><canvas id="kprev" style="max-width:100%"></canvas><small id="kwarn" style="display:block;padding:6px 10px"></small></div>
       <button class="btn sec full" id="kreapply" type="button" disabled>Terapkan ulang ke semua frame (tanpa proses ulang video)</button>
     </div>
     <h3>Preset ekspor</h3>
@@ -275,14 +275,27 @@ $('file').onchange=e=>{
   $('pstrip').hidden=true; $('pstrip').textContent='';
   $('gen').disabled=true; msg('Memuat video…'); v.src=url;
 };
-v.onloadeddata=()=>{
+function finalizeVideoLoad(){
+  if(!v.videoWidth){msg('File ini sepertinya tidak punya track video (audio saja?). Pilih file video lain.');return}
+  if(!isFinite(v.duration)||v.duration<=0){msg('Durasi video tidak terbaca. Coba file lain atau konversi dulu ke MP4.');return}
   $('end').value=v.duration.toFixed(2); $('start').value=0;
   $('w').value=Math.min(+$('w').value||128,v.videoWidth);
   updH(); $('gen').disabled=false;
   $('setStart').disabled=false; $('setEnd').disabled=false; $('ptest').disabled=false;
   msg(`Video ${v.videoWidth}×${v.videoHeight}, ${v.duration.toFixed(1)} dtk. Atur lalu tekan Buat.`);
+}
+v.onloadeddata=()=>{
+  if(!isFinite(v.duration)){
+    // beberapa file webm/mkv hasil convert melaporkan duration Infinity sampai di-seek dekat akhir dulu
+    msg('Menghitung durasi video…');
+    const fix=()=>{ v.removeEventListener('timeupdate',fix); v.currentTime=0; finalizeVideoLoad(); };
+    v.addEventListener('timeupdate',fix);
+    v.currentTime=1e9;
+    return;
+  }
+  finalizeVideoLoad();
 };
-v.onerror=()=>msg('Video tidak bisa dibaca di browser ini.');
+v.onerror=()=>msg('Video tidak bisa dibaca di browser ini. Coba format lain (mp4/webm).');
 function updH(){ if(v.videoWidth) $('h').value=Math.round(+$('w').value*v.videoHeight/v.videoWidth); }
 $('w').oninput=updH;
 
@@ -350,6 +363,8 @@ $('gen').onclick=async()=>{
     let cols=+$('cols').value||bestCols(n,fw,fh); cols=Math.min(cols,n);
     const rows=Math.ceil(n/cols);
     if(cols*fw>16000||rows*fh>16000){msg('Sheet terlalu besar. Kecilkan lebar frame, FPS, atau durasi.');return}
+    const heavy=n>150||(fw*fh*n)>50_000_000;
+    if(heavy&&!confirm(`Ini akan memproses ${n} frame berukuran ${fw}×${fh}px. Bisa memakan waktu dan memori cukup besar. Lanjutkan?`)){msg('Dibatalkan.');return}
     const cacheRaw=(fw*fh*4*n)<=300*1024*1024; // ~300MB batas aman biar tidak membebani memori browser
     sheet.width=cols*fw; sheet.height=rows*fh;
     const sc=sheet.getContext('2d');
@@ -470,11 +485,15 @@ $('igen').onclick=async()=>{
     let cols=+$('icols').value||bestCols(n,cs,cs); cols=Math.min(cols,n);
     const rows=Math.ceil(n/cols);
     if(cols*cs>16000||rows*cs>16000){iMsg('Sheet terlalu besar. Kecilkan ukuran atau jumlah frame.');return}
+    if((n*cs*cs)>60_000_000&&!confirm(`Ini akan membuat ${n} frame berukuran ${cs}×${cs}px. Bisa memakan waktu cukup lama. Lanjutkan?`)){iMsg('Dibatalkan.');return}
     const sc0=Math.min(1,512/Math.max(img.naturalWidth,img.naturalHeight));
     const src=document.createElement('canvas');
     src.width=Math.max(1,Math.round(img.naturalWidth*sc0)); src.height=Math.max(1,Math.round(img.naturalHeight*sc0));
     const s2=src.getContext('2d',{willReadFrequently:true}); s2.drawImage(img,0,0,src.width,src.height);
     if($('ikey').checked)chromaKey(s2,src.width,src.height,KI);
+    const kconf=chromaKey.lastAutoConfidence;
+    const keyWarn=($('ikey').checked&&$('imode').value==='auto'&&kconf!=null&&kconf<0.6)
+      ?` ⚠ Tepi gambar cuma ${Math.round(kconf*100)}% seragam — deteksi otomatis mungkin kurang akurat, coba pilih warna manual.`:'';
     const fit=Math.min(cs*0.8/src.width,cs*0.8/src.height),dw=src.width*fit,dh=src.height*fit;
     sheet.width=cols*cs; sheet.height=rows*cs;
     const sc=sheet.getContext('2d');
@@ -529,7 +548,7 @@ $('igen').onclick=async()=>{
     meta={image:base+'_sheet.png',animation:anim,frameWidth:cs,frameHeight:cs,columns:cols,rows,frameCount:n,fps,loop:$('iloop').checked,frames};
     frameBlobs=blobs;
     $('out').style.display='block';
-    iMsg(`Selesai: animasi ${anim}, ${n} frame. Lihat hasilnya di bawah.`);
+    iMsg(`Selesai: animasi ${anim}, ${n} frame. Lihat hasilnya di bawah.`+keyWarn);
     play();
     $('out').scrollIntoView({behavior:'smooth'});
   }catch(err){iMsg('Gagal: '+(err.message||err))}
@@ -757,15 +776,38 @@ g('dpack').onclick=async()=>{
 /* ===== Chroma key (green screen) ===== */
 const KV={mode:'kmode',col:'kcol',tol:'tol',soft:'ksoft',desp:'kdesp'};
 const KI={mode:'imode',col:'icol',tol:'itol',soft:'isoft',desp:'idesp'};
+/* deteksi warna background otomatis: sampling di sepanjang tepi gambar (bukan cuma 1 piksel pojok),
+   dikelompokkan per warna mirip, lalu ambil kelompok terbesar. confidence = proporsi tepi yang
+   cocok dengan warna itu -- kalau rendah, tepi tidak seragam dan auto-detect kurang bisa diandalkan */
+function sampleBorderColor(p,w,h){
+  const step=Math.max(1,Math.floor(Math.min(w,h)/40));
+  const buckets=new Map();
+  function add(x,y){
+    const i=(y*w+x)*4;
+    if(p[i+3]<10)return; // abaikan piksel yang sudah transparan
+    const key=(p[i]>>3)+','+(p[i+1]>>3)+','+(p[i+2]>>3); // kuantisasi 5-bit/kanal biar warna mirip tergabung
+    const e=buckets.get(key)||{n:0,r:0,g:0,b:0};
+    e.n++; e.r+=p[i]; e.g+=p[i+1]; e.b+=p[i+2];
+    buckets.set(key,e);
+  }
+  let total=0;
+  for(let x=0;x<w;x+=step){add(x,0);add(x,h-1);total+=2;}
+  for(let y=0;y<h;y+=step){add(0,y);add(w-1,y);total+=2;}
+  let best=null;
+  buckets.forEach(e=>{if(!best||e.n>best.n)best=e;});
+  if(!best||!total)return {r:p[0],g:p[1],b:p[2],confidence:0};
+  return {r:Math.round(best.r/best.n),g:Math.round(best.g/best.n),b:Math.round(best.b/best.n),confidence:best.n/total};
+}
 function chromaKey(c,w,h,K){
   const G=id=>document.getElementById(id),d=c.getImageData(0,0,w,h),p=d.data;
   const mode=G(K.mode).value,tol=+G(K.tol).value,soft=Math.max(1,+G(K.soft).value),desp=G(K.desp).checked;
-  let kr,kg,kb;
-  if(mode==='auto'){kr=p[0];kg=p[1];kb=p[2]}
+  let kr,kg,kb,autoConf=null;
+  if(mode==='auto'){const s=sampleBorderColor(p,w,h);kr=s.r;kg=s.g;kb=s.b;autoConf=s.confidence}
   else if(mode==='green'){kr=0;kg=255;kb=0}
   else if(mode==='blue'){kr=0;kg=0;kb=255}
   else if(mode==='magenta'){kr=255;kg=0;kb=255}
   else{const v=parseInt(G(K.col).value.slice(1),16);kr=(v>>16)&255;kg=(v>>8)&255;kb=v&255}
+  chromaKey.lastAutoConfidence=autoConf;
   // warna dinormalkan terhadap kecerahan, jadi bagian hijau yang gelap (bayangan) tetap terhapus
   const E=32,km=Math.max(kr,kg,kb)+E,kn0=kr/km,kn1=kg/km,kn2=kb/km;
   const chromatic=(Math.max(kr,kg,kb)-Math.min(kr,kg,kb))/km>.3;
@@ -797,6 +839,10 @@ function test(){
   const c=cv.getContext('2d',{willReadFrequently:true});
   c.drawImage(v,0,0,w,h); chromaKey(c,w,h,KV);
   g('kwrap').hidden=false;
+  const conf=chromaKey.lastAutoConfidence,warn=g('kwarn');
+  warn.textContent=(g('kmode').value==='auto'&&conf!=null&&conf<0.6)
+    ?`⚠ Tepi gambar cuma ${Math.round(conf*100)}% seragam — deteksi otomatis mungkin kurang akurat. Coba pilih warna manual.`
+    :'';
 }
 g('ktest').addEventListener('click',()=>{
   if(!g('v').videoWidth){g('msg').textContent='Pilih video dulu untuk menguji.';return}
