@@ -17,6 +17,8 @@ Semua diproses langsung di browser — tidak ada file yang diunggah ke mana pun.
 - **Preset ekspor**: simpan kombinasi ukuran, kolom, FPS, dan pengaturan chroma key sebagai preset bernama (tersimpan di `localStorage`), lalu terapkan kembali untuk animasi lain tanpa mengatur ulang dari nol.
 - **Koleksi karakter**: kumpulkan beberapa animasi per karakter (autosave ke IndexedDB), lalu unduh semuanya sekaligus sebagai satu paket ZIP berisi sheet, frame, JSON per-animasi (format bawaan, Aseprite, dan Godot `.tres` versi 3 & 4), dan `manifest.json`. Menghapus animasi (satu per satu atau sekaligus) bisa diurungkan selama beberapa detik lewat tombol "Urungkan" yang muncul.
 - **Demo battle** (`battle.html`): battle turn-based sederhana (serang/skill/bertahan/item) yang langsung memuat pasangan PNG + JSON hasil generator, untuk mengecek apakah sprite sudah pas dipakai di game.
+- **Test report** di demo battle: tiap slot PNG+JSON yang dipilih otomatis divalidasi (field JSON wajib, ukuran PNG cocok dengan grid, koordinat frame, hitbox) dan ditandai lolos/peringatan/gagal beserta alasannya.
+- **Import Unity** (`unity/Vid2SpriteImporter.cs`): skrip Editor sekali-pasang yang meng-slice sheet PNG jadi sprite dan bikin `AnimationClip` otomatis dari JSON hasil ekspor tool ini — lihat bagian [Unity](#unity) di bawah.
 
 ## Cara pakai
 
@@ -83,12 +85,29 @@ Semua diproses langsung di browser — tidak ada file yang diunggah ke mana pun.
 
 `manifestVersion` naik setiap kali struktur manifest berubah secara tidak kompatibel, supaya tool/loader di sisi game bisa mengecek kompatibilitas sebelum membaca paket. `addedAt` per animasi mencatat kapan animasi itu ditambahkan ke koleksi.
 
+## Unity
+
+Berbeda dari Godot, Unity tidak punya format resource teks sederhana yang bisa ditulis langsung dari browser — slicing sprite & pembuatan `AnimationClip` di Unity itu aksi Editor yang butuh konteks project (asset database, GUID, dsb), bukan cuma data. Karena itu integrasinya bukan tombol ekspor tambahan di `index.html`, tapi satu skrip Editor C# (`unity/Vid2SpriteImporter.cs`) yang **memakai langsung PNG + JSON native** yang sudah dihasilkan tool ini — tidak perlu format ekspor baru.
+
+Cara pakai:
+
+1. Taruh `Vid2SpriteImporter.cs` di dalam folder `Assets/Editor/` pada project Unity kamu (buat foldernya kalau belum ada; nama `Editor` wajib persis itu — konvensi Unity supaya skrip ini tidak ikut ke build).
+2. Taruh pasangan `<nama>_sheet.png` + `<nama>.json` (hasil **Unduh sheet PNG** + **Unduh data JSON**, atau dari folder per-animasi di **Unduh koleksi (ZIP)**) di folder yang sama di dalam `Assets/`.
+3. Di Project window, klik kanan file PNG-nya → **Vid2Sprite → Import Sprite Sheet + Animation**.
+
+Yang otomatis dikerjakan skrip itu:
+- Set Texture Import Settings PNG jadi **Sprite Mode = Multiple**, lalu iris grid-nya persis sesuai `frameWidth`/`frameHeight`/`columns`/`rows`/`padding` dari JSON (tidak perlu buka Sprite Editor manual).
+- Buat `AnimationClip` (`.anim`) di folder yang sama, satu keyframe `SpriteRenderer.sprite` per frame, mengikuti `fps` dan `loop` dari JSON.
+
+Catatan: pivot tiap sprite di-set bottom-center (titik pijak umum karakter 2D) dan filter mode di-set Point (cocok pixel art) — keduanya bisa diubah manual di Inspector kalau proyekmu butuh setting lain. Skrip ini tidak memakai field `hitbox` dari JSON; itu tetap urusan collider Unity kamu sendiri.
+
 ## Struktur proyek
 
 ```
-index.html    → generator sprite (mode video & mode gambar)
-battle.html   → demo battle yang memuat hasil generator
-README.md     → dokumen ini
+index.html              → generator sprite (mode video & mode gambar)
+battle.html              → demo battle yang memuat hasil generator, plus test report per slot
+unity/Vid2SpriteImporter.cs → skrip Editor Unity untuk import otomatis dari PNG+JSON native tool ini
+README.md                → dokumen ini
 ```
 
 Tidak ada dependency build — cukup dibuka langsung di browser modern. Satu-satunya library eksternal adalah [JSZip](https://stuk.github.io/jszip/) (dimuat dari CDN) untuk membuat file ZIP.
