@@ -174,14 +174,31 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
   <div class="box">
     <h3>Animasi</h3>
     <div class="fields">
-      <label class="f">Jenis<select id="anim"><option value="idle">Idle</option><option value="walk">Walk</option><option value="death">Death</option></select></label>
+      <label class="f" style="grid-column:1/-1">Jenis<select id="anim">
+        <option value="idle">Idle (diam)</option>
+        <option value="walk">Walk (jalan)</option>
+        <option value="run">Run (lari)</option>
+        <option value="jump">Jump (lompat)</option>
+        <option value="attack">Attack (serangan)</option>
+        <option value="hurt">Hurt (kena serang)</option>
+        <option value="defend">Defend (bertahan)</option>
+        <option value="victory">Victory (menang)</option>
+        <option value="death">Death (mati)</option>
+      </select><small id="ihint" style="font-size:12.5px"></small></label>
       <label class="f">Jumlah frame<input type="number" id="icount" value="12" min="2" max="64"></label>
       <label class="f">Ukuran frame (px)<input type="number" id="isize" value="128" min="16" max="1024"></label>
       <label class="f">FPS pratinjau<input type="number" id="ifps" value="12" min="1" max="60"></label>
       <label class="f">Kolom sheet (0 = otomatis)<input type="number" id="icols" value="0" min="0"></label>
-      <label class="f" style="grid-column:span 2">Intensitas gerak<input type="range" id="iint" min="10" max="100" value="50"></label>
     </div>
-    <label class="sw"><input type="checkbox" id="iloop" checked><span class="tg"></span><b>Ulang terus (loop)</b><small>Aktif untuk idle/walk, biasanya nonaktif untuk death</small></label>
+    <h3>Proporsi &amp; posisi tubuh</h3>
+    <div class="fields">
+      <label class="f">Jangkar kaki dari atas (%)<input type="number" id="ianchorY" value="92" min="50" max="100"></label>
+      <label class="f">Jangkar horizontal (%)<input type="number" id="ianchorX" value="50" min="0" max="100"></label>
+      <label class="f">Skala karakter dlm frame (%)<input type="number" id="iscale" value="80" min="30" max="100"></label>
+      <label class="f">Intensitas gerak<input type="range" id="iint" min="10" max="100" value="50"></label>
+    </div>
+    <p class="s" style="margin:-4px 0 14px;color:var(--mu);font-size:12.5px">Sesuaikan jangkar &amp; skala untuk proporsi tubuh berbeda (mis. karakter chibi vs realistis, atau gambar dengan banyak ruang kosong di sekitar karakter).</p>
+    <label class="sw"><input type="checkbox" id="iloop" checked><span class="tg"></span><b>Ulang terus (loop)</b><small>Otomatis terisi sesuai jenis animasi, tapi bisa diubah manual</small></label>
     <label class="sw"><input type="checkbox" id="ikey"><span class="tg"></span><b>Hapus background (chroma key)</b><small>Untuk gambar dengan background polos</small></label>
     <div id="itolw" style="display:none;flex-direction:column;gap:12px;margin-bottom:14px">
       <label class="f">Warna background<select id="imode"><option value="auto">Otomatis (pojok kiri atas)</option><option value="green">Hijau (green screen)</option><option value="blue">Biru (blue screen)</option><option value="magenta">Magenta</option><option value="custom">Pilih warna sendiri</option></select></label>
@@ -474,7 +491,23 @@ $('djson').onclick=()=>{ if(meta) save(base+'_sheet.json',JSON.stringify(meta,nu
 /* ===== Animasi dari gambar ===== */
 let img=null,ibase='char';
 const iMsg=t=>$('imsg').textContent=t;
-$('anim').onchange=()=>{$('iloop').checked=$('anim').value!=='death'};
+const IANIM={
+ idle:{n:8,loop:true,tip:'Napas pelan, diulang terus.'},
+ walk:{n:8,loop:true,tip:'Satu siklus langkah kiri-kanan, diulang terus.'},
+ run:{n:8,loop:true,tip:'Mirip walk tapi lebih cepat, dengan sedikit condong ke depan.'},
+ jump:{n:10,loop:false,tip:'Jongkok bersiap, melambung, lalu mendarat.'},
+ attack:{n:8,loop:false,tip:'Ayunan cepat ke depan; damage biasanya di tengah.'},
+ hurt:{n:4,loop:false,tip:'Terpental sebentar akibat kena serang, tidak sampai jatuh.'},
+ defend:{n:6,loop:true,tip:'Pose bertahan yang bisa ditahan selama diperlukan.'},
+ victory:{n:10,loop:true,tip:'Melompat kecil berulang, pose senang.'},
+ death:{n:12,loop:false,tip:'Hentakan, jatuh dengan overshoot, memantul, lalu memudar.'}
+};
+function applyIAnim(){
+  const d=IANIM[$('anim').value]; if(!d)return;
+  $('icount').value=d.n; $('iloop').checked=d.loop;
+  $('ihint').textContent=`Saran: ${d.n} frame, ${d.loop?'diulang terus':'sekali putar'}. ${d.tip}`;
+}
+$('anim').addEventListener('change',applyIAnim); applyIAnim();
 $('ifile').onchange=e=>{
   const f=e.target.files[0]; if(!f)return;
   const im=new Image();
@@ -504,7 +537,11 @@ $('igen').onclick=async()=>{
     const kconf=chromaKey.lastAutoConfidence;
     const keyWarn=($('ikey').checked&&$('imode').value==='auto'&&kconf!=null&&kconf<0.6)
       ?` ⚠ Tepi gambar cuma ${Math.round(kconf*100)}% seragam — deteksi otomatis mungkin kurang akurat, coba pilih warna manual.`:'';
-    const fit=Math.min(cs*0.8/src.width,cs*0.8/src.height),dw=src.width*fit,dh=src.height*fit;
+    // proporsi tubuh: jangkar (titik pijak) dan skala bisa disesuaikan per karakter
+    const anchorY=Math.min(100,Math.max(50,+$('ianchorY').value||92))/100;
+    const anchorX=Math.min(100,Math.max(0,+$('ianchorX').value||50))/100;
+    const scalePct=Math.min(100,Math.max(30,+$('iscale').value||80))/100;
+    const fit=Math.min(cs*scalePct/src.width,cs*scalePct/src.height),dw=src.width*fit,dh=src.height*fit;
     sheet.width=cols*cs; sheet.height=rows*cs;
     const sc=sheet.getContext('2d');
     const tmp=document.createElement('canvas'); tmp.width=cs; tmp.height=cs;
@@ -527,6 +564,40 @@ $('igen').onclick=async()=>{
           const leg=cl((0.4-h)/0.4,0,1),lift=cs*0.05*k*leg;
           return [cs*0.03*k*h*Math.sin(ph+0.6*h),-lift*Math.max(0,s),-lift*Math.max(0,-s)];
         };
+      }else if(anim==='run'){
+        // seperti walk tapi lebih cepat, amplitudo lebih besar, dan sedikit condong ke depan
+        const ph=TAU*t*1.5,s=Math.sin(ph),c2=Math.cos(2*ph);
+        y=-cs*0.07*k*s*s; r=0.06*k*s+0.05*k; sy=1-0.045*k*c2; sx=1+0.03*k*c2;
+        wf=h=>{
+          const leg=cl((0.4-h)/0.4,0,1),lift=cs*0.08*k*leg;
+          return [cs*0.05*k*h*Math.sin(ph+0.6*h),-lift*Math.max(0,s),-lift*Math.max(0,-s)];
+        };
+      }else if(anim==='jump'){
+        // jongkok bersiap -> melambung (arc) -> mendarat dengan squash
+        if(p<0.15){ const q=p/0.15; sy=1-0.15*k*q; sx=1+0.08*k*q; y=cs*0.05*k*q; }
+        else if(p<0.85){ const q=(p-0.15)/0.7; y=-Math.sin(Math.PI*q)*cs*0.35*k; sy=1+0.05*k*Math.sin(Math.PI*q); sx=1-0.03*k*Math.sin(Math.PI*q); }
+        else{ const q=(p-0.85)/0.15; sy=1-0.12*k*(1-q); sx=1+0.06*k*(1-q); y=cs*0.02*k*(1-q); }
+        wf=h=>[0,-cs*0.02*k*h*Math.sin(Math.PI*p),-cs*0.02*k*h*Math.sin(Math.PI*p)];
+      }else if(anim==='attack'){
+        // condong lalu menghentak maju, lalu kembali
+        const u=cl(p/0.7,0,1),swing=Math.sin(Math.PI*u);
+        r=-0.1*k+0.28*k*swing; x=cs*0.1*k*swing; sx=1+0.05*k*swing; sy=1-0.03*k*swing;
+        wf=h=>[cs*0.05*k*h*swing,0,0];
+      }else if(anim==='hurt'){
+        // terpental mundur + sedikit gemetar, tidak sampai jatuh
+        const rec=Math.sin(Math.PI*cl(p/0.6,0,1));
+        x=-cs*0.08*k*rec; r=-0.06*k*rec; sx=1-0.05*k*rec; sy=1+0.03*k*rec;
+        wf=h=>[cs*0.04*k*h*rec*Math.sin(p*TAU*3),0,0];
+      }else if(anim==='defend'){
+        // pose merunduk/bersiap yang bisa ditahan, dengan ayunan halus
+        const ph=TAU*t,s=Math.sin(ph);
+        y=cs*0.03*k; sy=1-0.05*k+0.01*k*s; sx=1+0.04*k-0.01*k*s;
+        wf=h=>[cs*0.01*k*h*s,0,0];
+      }else if(anim==='victory'){
+        // lompat-lompat kecil berulang, pose gembira
+        const ph=TAU*t*1.2,s=Math.abs(Math.sin(ph));
+        y=-cs*0.12*k*s; sy=1+0.06*k*s; sx=1-0.04*k*s;
+        wf=h=>[0,-cs*0.02*k*h*s,-cs*0.02*k*h*s];
       }else{
         // death: hentakan mundur, jatuh dengan overshoot, memantul, lalu memudar
         const u=cl((p-0.1)/0.7,0,1),c1=1.70158,c3=c1+1;
@@ -540,7 +611,7 @@ $('igen').onclick=async()=>{
         wf=h=>[cs*0.05*k*h*h*Math.sin(Math.PI*u),0,0];
       }
       tc.clearRect(0,0,cs,cs); tc.save(); tc.globalAlpha=a;
-      tc.translate(cs/2+x,cs*0.92+y); tc.rotate(r); tc.scale(sx,sy);
+      tc.translate(cs*anchorX+x,cs*anchorY+y); tc.rotate(r); tc.scale(sx,sy);
       // gambar per potongan horizontal (48 strip) supaya bagian badan bisa bergerak beda-beda
       const S=48,sh=src.height/S,stH=dh/S,hw=src.width/2,dhw=dw/2;
       for(let j=0;j<S;j++){
@@ -888,6 +959,7 @@ function applyVideo(p){
 }
 function fieldsImage(){
   return {isize:+g('isize').value,icols:+g('icols').value,ifps:+g('ifps').value,iint:+g('iint').value,
+    ianchorY:+g('ianchorY').value,ianchorX:+g('ianchorX').value,iscale:+g('iscale').value,
     ikey:g('ikey').checked,imode:g('imode').value,icol:g('icol').value,
     itol:+g('itol').value,isoft:+g('isoft').value,idesp:g('idesp').checked};
 }
@@ -896,6 +968,9 @@ function applyImage(p){
   if(p.icols!=null)g('icols').value=p.icols;
   if(p.ifps!=null)g('ifps').value=p.ifps;
   if(p.iint!=null)g('iint').value=p.iint;
+  if(p.ianchorY!=null)g('ianchorY').value=p.ianchorY;
+  if(p.ianchorX!=null)g('ianchorX').value=p.ianchorX;
+  if(p.iscale!=null)g('iscale').value=p.iscale;
   g('ikey').checked=!!p.ikey; g('itolw').style.display=p.ikey?'flex':'none';
   if(p.imode!=null){g('imode').value=p.imode; g('icolw').hidden=p.imode!=='custom';}
   if(p.icol!=null)g('icol').value=p.icol;
