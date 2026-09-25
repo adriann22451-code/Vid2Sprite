@@ -11,9 +11,10 @@ Semua diproses langsung di browser — tidak ada file yang diunggah ke mana pun.
 - **Hapus background (chroma key)**: mendukung hijau, biru, magenta, warna custom, atau deteksi otomatis dari pojok gambar — dengan kontrol toleransi, kehalusan tepi, dan despill.
 - **21 jenis animasi RPG** siap pakai (idle, walk, run, attack, skill, critical, death, victory, dll) dengan preset jumlah frame & mode loop.
 - **Hitbox otomatis**: dihitung dari bounding box piksel non-transparan tiap frame, bisa diperkecil sesuai kebutuhan.
+- **Edit frame**: hapus frame yang tidak perlu atau pindahkan urutannya sebelum diunduh — sheet, hitbox, dan pratinjau otomatis dibuat ulang mengikuti perubahan.
 - **Padding antar frame**: tambahkan jarak kosong (px) di sekitar tiap frame pada sprite sheet, supaya tidak ada "bleeding" warna dari frame sebelah saat sheet di-scale/di-filter oleh game engine. Bisa dicek langsung lewat opsi **tampilkan grid** di pratinjau (garis putus-putus, murni visual — tidak ikut ke file yang diunduh).
 - **Preset ekspor**: simpan kombinasi ukuran, kolom, FPS, dan pengaturan chroma key sebagai preset bernama (tersimpan di `localStorage`), lalu terapkan kembali untuk animasi lain tanpa mengatur ulang dari nol.
-- **Koleksi karakter**: kumpulkan beberapa animasi per karakter (autosave ke IndexedDB), lalu unduh semuanya sekaligus sebagai satu paket ZIP berisi sheet, frame, JSON per-animasi, dan `manifest.json`.
+- **Koleksi karakter**: kumpulkan beberapa animasi per karakter (autosave ke IndexedDB), lalu unduh semuanya sekaligus sebagai satu paket ZIP berisi sheet, frame, JSON per-animasi (format bawaan + format Aseprite), dan `manifest.json`. Menghapus animasi (satu per satu atau sekaligus) bisa diurungkan selama beberapa detik lewat tombol "Urungkan" yang muncul.
 - **Demo battle** (`battle.html`): battle turn-based sederhana (serang/skill/bertahan/item) yang langsung memuat pasangan PNG + JSON hasil generator, untuk mengecek apakah sprite sudah pas dipakai di game.
 
 ## Cara pakai
@@ -27,6 +28,7 @@ Semua diproses langsung di browser — tidak ada file yang diunggah ke mana pun.
    - **Unduh semua frame (ZIP)** — PNG per-frame.
    - **Unduh sheet PNG** — satu file sprite sheet.
    - **Unduh data JSON** — metadata (ukuran frame, grid, FPS, loop, hitbox).
+   - **Unduh JSON (format Aseprite)** — metadata yang sama, ditulis ulang ke format Aseprite JSON (hash) supaya bisa dibaca tool/engine lain yang sudah mendukung format itu (mis. Phaser, importer pihak ketiga di Unity/Godot).
 7. Untuk membuat satu karakter dengan banyak animasi: ulangi proses di atas, tekan **Tambah animasi ini ke koleksi** tiap selesai, lalu **Unduh koleksi (ZIP)** di akhir.
 8. Buka `battle.html` untuk mencoba sprite yang sudah diunduh di battle demo (pilih file PNG + JSON per slot animasi).
 

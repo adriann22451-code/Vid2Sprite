@@ -70,6 +70,13 @@ canvas{display:block;max-width:none}
 .hb{margin-top:16px;padding-top:14px;border-top:1px solid var(--ln)}
 .chipx{border:0;background:transparent;color:var(--mu);font-size:16px;line-height:1;cursor:pointer;padding:0 2px 0 6px}
 .chipx:hover{color:var(--tx)}
+.fitem{flex:0 0 auto;text-align:center;background:var(--sf2);border:1px solid var(--ln);border-radius:8px;padding:6px;width:76px}
+.fitem img{width:100%;height:56px;object-fit:contain;background:repeating-conic-gradient(var(--c1) 0 25%,var(--c2) 0 50%) 0 0/8px 8px;border-radius:4px;display:block}
+.fitem .fi{font-size:10.5px;color:var(--mu);margin:3px 0 4px;font-variant-numeric:tabular-nums}
+.fitem .frow{display:flex;justify-content:center;gap:2px}
+.fitem button{border:0;background:var(--sf);border:1px solid var(--ln);border-radius:5px;min-width:22px;height:22px;font-size:11px;cursor:pointer;color:var(--tx)}
+.fitem button:disabled{opacity:.3;cursor:not-allowed}
+.fitem button.fdel{color:#ff6b6b}
 .ck{display:flex;align-items:center;gap:10px;min-height:44px;font-size:13.5px;font-weight:600;color:var(--tx);cursor:pointer}
 input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);border-radius:9px;background:var(--sf2)}
 .foot{margin-top:22px;color:var(--mu);font-size:12.5px}
@@ -235,6 +242,11 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
 <section class="box" id="out" style="display:none">
   <h3>Hasil</h3>
   <div class="chk" style="position:relative;display:inline-block"><canvas id="sheet"></canvas><canvas id="sheetgrid" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div>
+  <div id="fedit" style="margin-top:12px">
+    <h3 style="margin:0 0 6px">Edit frame</h3>
+    <p class="s" style="margin:0 0 8px;color:var(--mu);font-size:12.5px">Hapus frame yang tidak perlu atau pindahkan urutannya. Sheet, hitbox, dan pratinjau otomatis dibuat ulang.</p>
+    <div id="fstrip" style="display:flex;gap:8px;overflow-x:auto;padding:4px 2px"></div>
+  </div>
   <div class="pvrow">
     <div>
       <h3>Pratinjau animasi</h3>
@@ -246,7 +258,9 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
         <button class="btn" id="dzip">Unduh semua frame (ZIP)</button>
         <button class="btn sec" id="dpng">Unduh sheet PNG</button>
         <button class="btn sec" id="djson">Unduh data JSON</button>
+        <button class="btn sec" id="daseprite">Unduh JSON (format Aseprite)</button>
       </div>
+      <p class="s" style="margin:8px 0 0;color:var(--mu);font-size:12px">Format Aseprite dikenali banyak engine/tool lain (Phaser, importer pihak ketiga di Unity/Godot) selain format JSON bawaan di atas.</p>
     </div>
   </div>
   <div class="hb">
@@ -515,6 +529,36 @@ $('dzip').onclick=async()=>{
 };
 $('dpng').onclick=()=>{ if(!meta)return; sheet.toBlob(b=>b&&save(base+'_sheet.png',b),'image/png'); };
 $('djson').onclick=()=>{ if(meta) save(base+'_sheet.json',JSON.stringify(meta,null,2)); };
+
+/* konversi metadata internal ke format Aseprite JSON (hash), dikenali banyak engine/tool lain
+   (Phaser, importer pihak ketiga di Unity/Godot) selain format JSON bawaan tool ini */
+function toAsepriteJson(m,imageName){
+  const dur=Math.round(1000/(m.fps||12));
+  const frames={};
+  m.frames.forEach((f,i)=>{
+    const name=`${m.animation} ${i}.png`;
+    frames[name]={
+      frame:{x:f.x,y:f.y,w:f.w,h:f.h},
+      rotated:false,trimmed:false,
+      spriteSourceSize:{x:0,y:0,w:f.w,h:f.h},
+      sourceSize:{w:f.w,h:f.h},
+      duration:dur
+    };
+  });
+  return {
+    frames,
+    meta:{
+      app:'https://github.com/',
+      version:'1.0',
+      image:imageName,
+      format:'RGBA8888',
+      size:{w:m.columns*m.frameWidth+(m.padding||0)*(m.columns+1),h:m.rows*m.frameHeight+(m.padding||0)*(m.rows+1)},
+      scale:'1',
+      frameTags:[{name:m.animation,from:0,to:m.frames.length-1,direction:m.loop?'forward':'forward'}]
+    }
+  };
+}
+$('daseprite').onclick=()=>{ if(meta) save(base+'_aseprite.json',JSON.stringify(toAsepriteJson(meta,base+'_sheet.png'),null,2)); };
 
 /* ===== Animasi dari gambar ===== */
 let img=null,ibase='char';
@@ -825,17 +869,38 @@ try{
 }catch(e){}
 
 const pack=new Map();
+let lastDeleted=null,undoTimer=null;
 function renderPack(){
   const box=g('plist'); box.textContent='';
   pack.forEach((v,k)=>{
     const c=document.createElement('span'); c.className='chip'; c.textContent=`${k}: ${v.meta.frames.length} frame`;
     const x=document.createElement('button'); x.type='button'; x.className='chipx'; x.textContent='×'; x.setAttribute('aria-label','Hapus '+k);
-    x.onclick=()=>{pack.delete(k);idbDel(k);renderPack()};
+    x.onclick=()=>{
+      if(!confirm(`Hapus animasi "${k}" dari koleksi ini?`))return;
+      lastDeleted={key:k,entry:v}; clearTimeout(undoTimer);
+      pack.delete(k); idbDel(k); renderPack();
+      showUndo(`Animasi "${k}" dihapus.`);
+    };
     c.appendChild(x); box.appendChild(c);
   });
   g('dpack').disabled=!pack.size;
   g('pclear').disabled=!pack.size;
-  g('pinfo').textContent=pack.size?`${pack.size} animasi di koleksi.`:'Koleksi masih kosong.';
+  if(pack.size)g('pinfo').textContent=`${pack.size} animasi di koleksi.`;
+  else g('pinfo').textContent='Koleksi masih kosong.';
+}
+function showUndo(prefix){
+  const info=g('pinfo'); info.textContent='';
+  info.append(prefix+' ');
+  const u=document.createElement('button'); u.type='button'; u.className='chipx'; u.style.cssText='background:none;border:1px solid var(--ln);border-radius:6px;padding:2px 10px;color:var(--ac);cursor:pointer;font-weight:700';
+  u.textContent='Urungkan';
+  u.onclick=()=>{
+    if(!lastDeleted)return;
+    if(lastDeleted.key==='__all__'){ lastDeleted.entries.forEach(([k,v])=>{pack.set(k,v);idbSet(k,v)}); }
+    else{ pack.set(lastDeleted.key,lastDeleted.entry); idbSet(lastDeleted.key,lastDeleted.entry); }
+    lastDeleted=null; clearTimeout(undoTimer); renderPack();
+  };
+  info.appendChild(u);
+  undoTimer=setTimeout(()=>{ lastDeleted=null; renderPack(); },10000);
 }
 g('padd').onclick=async()=>{
   if(!meta||!frameBlobs.length)return;
@@ -852,8 +917,10 @@ g('padd').onclick=async()=>{
 };
 g('pclear').onclick=async()=>{
   if(!pack.size)return;
-  if(!confirm('Hapus semua animasi di koleksi ini? Tindakan ini tidak bisa dibatalkan.'))return;
+  if(!confirm('Hapus semua animasi di koleksi ini? Bisa diurungkan sebentar setelah ini.'))return;
+  lastDeleted={key:'__all__',entries:[...pack.entries()]}; clearTimeout(undoTimer);
   pack.clear(); await idbClear(); renderPack();
+  showUndo(`${lastDeleted.entries.length} animasi dihapus dari koleksi.`);
 };
 (async()=>{
   const rows=await idbAll();
@@ -873,6 +940,7 @@ g('dpack').onclick=async()=>{
     for(const [k,v] of pack){
       const m=v.meta,d=root.folder(k),pad=Math.max(3,String(v.frames.length).length);
       d.file(k+'_sheet.png',v.sheet); d.file(k+'.json',JSON.stringify(m,null,2));
+      d.file(k+'_aseprite.json',JSON.stringify(toAsepriteJson(m,k+'_sheet.png'),null,2));
       const fd=d.folder('frames');
       v.frames.forEach((b,i)=>fd.file(`${k}_${String(i+1).padStart(pad,'0')}.png`,b));
       man.animations[k]={sheet:`${k}/${k}_sheet.png`,data:`${k}/${k}.json`,frames:m.frameCount||m.frames.length,fps:m.fps,loop:m.loop,frameWidth:m.frameWidth,frameHeight:m.frameHeight,columns:m.columns,rows:m.rows,hitbox:m.hitbox||null,addedAt:v.addedAt||null};
@@ -1091,6 +1159,74 @@ function importPresets(file){
     e.target.value='';
   });
 });
+})();
+</script>
+<script>
+/* ===== Edit frame: hapus & urutkan ulang sebelum diunduh ===== */
+(()=>{
+const g=id=>document.getElementById(id);
+let thumbUrls=[];
+function revokeThumbs(){ thumbUrls.forEach(u=>URL.revokeObjectURL(u)); thumbUrls=[]; }
+
+function renderFrameEditor(){
+  const box=g('fstrip'); box.textContent='';
+  revokeThumbs();
+  if(!meta||!frameBlobs.length){ g('fedit').style.display='none'; return; }
+  g('fedit').style.display='block';
+  frameBlobs.forEach((b,i)=>{
+    const url=URL.createObjectURL(b); thumbUrls.push(url);
+    const it=document.createElement('div'); it.className='fitem';
+    const im=document.createElement('img'); im.src=url; im.alt='frame '+(i+1);
+    const lbl=document.createElement('div'); lbl.className='fi'; lbl.textContent='#'+(i+1);
+    const row=document.createElement('div'); row.className='frow';
+    const bl=document.createElement('button'); bl.type='button'; bl.textContent='◀'; bl.title='Pindah ke kiri'; bl.disabled=i===0;
+    bl.onclick=()=>moveFrame(i,-1);
+    const bd=document.createElement('button'); bd.type='button'; bd.className='fdel'; bd.textContent='×'; bd.title='Hapus frame ini';
+    bd.disabled=frameBlobs.length<=1; bd.onclick=()=>deleteFrame(i);
+    const br=document.createElement('button'); br.type='button'; br.textContent='▶'; br.title='Pindah ke kanan'; br.disabled=i===frameBlobs.length-1;
+    br.onclick=()=>moveFrame(i,1);
+    row.append(bl,bd,br); it.append(im,lbl,row); box.appendChild(it);
+  });
+}
+
+function swap(arr,i,j){ if(!arr||!arr.length)return; const t=arr[i]; arr[i]=arr[j]; arr[j]=t; }
+function moveFrame(i,dir){
+  const j=i+dir; if(j<0||j>=frameBlobs.length)return;
+  swap(frameBlobs,i,j);
+  if(rawVideoFrames&&rawVideoFrames.length)swap(rawVideoFrames,i,j);
+  rebuildAfterEdit();
+}
+function deleteFrame(i){
+  if(frameBlobs.length<=1)return;
+  if(!confirm(`Hapus frame #${i+1}? Sisa frame akan disusun ulang ke sheet.`))return;
+  frameBlobs.splice(i,1);
+  if(rawVideoFrames&&rawVideoFrames.length)rawVideoFrames.splice(i,1);
+  rebuildAfterEdit();
+}
+
+/* susun ulang sheet dari frameBlobs (urutan/isi sekarang) memakai tata letak (cols/padding) yang sama */
+async function rebuildAfterEdit(){
+  const n=frameBlobs.length,fw=meta.frameWidth,fh=meta.frameHeight,pad=meta.padding||0;
+  let cols=Math.min(meta.columns||bestCols(n,fw,fh),n); const rows=Math.ceil(n/cols);
+  sheet.width=cols*fw+pad*(cols+1); sheet.height=rows*fh+pad*(rows+1);
+  const sc=sheet.getContext('2d');
+  const frames=[];
+  for(let i=0;i<n;i++){
+    const bmp=await createImageBitmap(frameBlobs[i]);
+    const col=i%cols,row=Math.floor(i/cols),x=pad+col*(fw+pad),y=pad+row*(fh+pad);
+    sc.drawImage(bmp,x,y); bmp.close&&bmp.close();
+    frames.push({index:i,x,y,w:fw,h:fh});
+  }
+  meta.columns=cols; meta.rows=rows; meta.frameCount=n; meta.frames=frames;
+  const gridOn=document.getElementById('p-video').hidden ? $('igrid').checked : $('grid').checked;
+  drawGrid(fw,fh,cols,rows,pad,gridOn);
+  play(); // memicu pratinjau, statistik, dan pemindaian hitbox ulang lewat pembungkus play()
+  renderFrameEditor();
+}
+
+/* dipanggil ulang tiap kali sheet baru dibuat (video/gambar) supaya strip editor ikut ter-refresh */
+const basePlayFE=window.play;
+window.play=function(){ basePlayFE(); renderFrameEditor(); };
 })();
 </script>
 </body>
