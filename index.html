@@ -267,8 +267,10 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
         <button class="btn sec" id="dpng">Unduh sheet PNG</button>
         <button class="btn sec" id="djson">Unduh data JSON</button>
         <button class="btn sec" id="daseprite">Unduh JSON (format Aseprite)</button>
+        <button class="btn sec" id="dgodot4">Unduh SpriteFrames (Godot 4 .tres)</button>
+        <button class="btn sec" id="dgodot3">Unduh SpriteFrames (Godot 3 .tres)</button>
       </div>
-      <p class="s" style="margin:8px 0 0;color:var(--mu);font-size:12px">Format Aseprite dikenali banyak engine/tool lain (Phaser, importer pihak ketiga di Unity/Godot) selain format JSON bawaan di atas.</p>
+      <p class="s" style="margin:8px 0 0;color:var(--mu);font-size:12px">Format Aseprite dikenali banyak engine/tool lain (Phaser, importer pihak ketiga di Unity/Godot) selain format JSON bawaan di atas. File <code>.tres</code> adalah resource <b>SpriteFrames</b> native Godot (dipakai langsung di node AnimatedSprite2D/AnimatedSprite) — pilih sesuai versi proyekmu, lalu taruh satu folder dengan PNG sheet-nya sebelum diimpor.</p>
     </div>
   </div>
   <div class="hb">
@@ -567,6 +569,65 @@ function toAsepriteJson(m,imageName){
   };
 }
 $('daseprite').onclick=()=>{ if(meta) save(base+'_aseprite.json',JSON.stringify(toAsepriteJson(meta,base+'_sheet.png'),null,2)); };
+
+/* konversi metadata internal ke resource SpriteFrames Godot (.tres, format teks) — tiap frame jadi
+   AtlasTexture terpisah yang me-region sheet PNG yang sama, dipakai langsung di node
+   AnimatedSprite2D (Godot 4) / AnimatedSprite (Godot 3) tanpa perlu plugin/importer tambahan.
+   Dua versi disediakan karena format resource teks Godot 3 dan 4 tidak kompatibel satu sama lain
+   (nama tipe tekstur, sintaks id resource, dan struktur array "frames" animasi berbeda). */
+function escGodotStr(s){ return String(s).replace(/\\/g,'\\\\').replace(/"/g,'\\"'); }
+
+function toGodot4Tres(m,imageName){
+  const n=m.frames.length;
+  const atlasBlocks=m.frames.map((f,i)=>
+    `[sub_resource type="AtlasTexture" id="AtlasTexture_${i}"]\natlas = ExtResource("1_tex")\nregion = Rect2(${f.x}, ${f.y}, ${f.w}, ${f.h})`
+  ).join('\n\n');
+  const frameEntries=m.frames.map((f,i)=>
+    `{\n"duration": 1.0,\n"texture": SubResource("AtlasTexture_${i}")\n}`
+  ).join(', ');
+  const loadSteps=n+2; // 1 ext_resource (tekstur) + n sub_resource (AtlasTexture) + 1 resource utama
+  const animName=escGodotStr(m.animation||'default');
+  return `[gd_resource type="SpriteFrames" load_steps=${loadSteps} format=3]
+
+[ext_resource type="Texture2D" path="res://${imageName}" id="1_tex"]
+
+${atlasBlocks}
+
+[resource]
+animations = [{
+"frames": [${frameEntries}],
+"loop": ${m.loop?'true':'false'},
+"name": &"${animName}",
+"speed": ${m.fps||10}.0
+}]
+`;
+}
+
+function toGodot3Tres(m,imageName){
+  const n=m.frames.length;
+  const atlasBlocks=m.frames.map((f,i)=>
+    `[sub_resource type="AtlasTexture" id=${i+1}]\natlas = ExtResource( 1 )\nregion = Rect2( ${f.x}, ${f.y}, ${f.w}, ${f.h} )`
+  ).join('\n\n');
+  const frameRefs=m.frames.map((f,i)=>`SubResource( ${i+1} )`).join(', ');
+  const loadSteps=n+2; // 1 ext_resource (tekstur) + n sub_resource (AtlasTexture) + 1 resource utama
+  const animName=escGodotStr(m.animation||'default');
+  return `[gd_resource type="SpriteFrames" load_steps=${loadSteps} format=2]
+
+[ext_resource path="res://${imageName}" type="Texture" id=1]
+
+${atlasBlocks}
+
+[resource]
+animations = [ {
+"frames": [ ${frameRefs} ],
+"loop": ${m.loop?'true':'false'},
+"name": "${animName}",
+"speed": ${m.fps||10}.0
+} ]
+`;
+}
+$('dgodot4').onclick=()=>{ if(meta) save(base+'_godot4.tres',toGodot4Tres(meta,base+'_sheet.png')); };
+$('dgodot3').onclick=()=>{ if(meta) save(base+'_godot3.tres',toGodot3Tres(meta,base+'_sheet.png')); };
 
 /* ===== Animasi dari gambar ===== */
 let img=null,ibase='char';
@@ -949,6 +1010,8 @@ g('dpack').onclick=async()=>{
       const m=v.meta,d=root.folder(k),pad=Math.max(3,String(v.frames.length).length);
       d.file(k+'_sheet.png',v.sheet); d.file(k+'.json',JSON.stringify(m,null,2));
       d.file(k+'_aseprite.json',JSON.stringify(toAsepriteJson(m,k+'_sheet.png'),null,2));
+      d.file(k+'_godot4.tres',toGodot4Tres(m,k+'_sheet.png'));
+      d.file(k+'_godot3.tres',toGodot3Tres(m,k+'_sheet.png'));
       const fd=d.folder('frames');
       v.frames.forEach((b,i)=>fd.file(`${k}_${String(i+1).padStart(pad,'0')}.png`,b));
       man.animations[k]={sheet:`${k}/${k}_sheet.png`,data:`${k}/${k}.json`,frames:m.frameCount||m.frames.length,fps:m.fps,loop:m.loop,frameWidth:m.frameWidth,frameHeight:m.frameHeight,columns:m.columns,rows:m.rows,hitbox:m.hitbox||null,addedAt:v.addedAt||null};

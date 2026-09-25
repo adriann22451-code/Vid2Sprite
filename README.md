@@ -15,7 +15,7 @@ Semua diproses langsung di browser — tidak ada file yang diunggah ke mana pun.
 - **Onion skinning**: jeda pratinjau animasi dan lihat frame sebelum (biru transparan) & sesudah (merah transparan) di belakang frame yang sedang aktif, untuk mengecek gerakan yang "meloncat" sebelum diekspor.
 - **Padding antar frame**: tambahkan jarak kosong (px) di sekitar tiap frame pada sprite sheet, supaya tidak ada "bleeding" warna dari frame sebelah saat sheet di-scale/di-filter oleh game engine. Bisa dicek langsung lewat opsi **tampilkan grid** di pratinjau (garis putus-putus, murni visual — tidak ikut ke file yang diunduh).
 - **Preset ekspor**: simpan kombinasi ukuran, kolom, FPS, dan pengaturan chroma key sebagai preset bernama (tersimpan di `localStorage`), lalu terapkan kembali untuk animasi lain tanpa mengatur ulang dari nol.
-- **Koleksi karakter**: kumpulkan beberapa animasi per karakter (autosave ke IndexedDB), lalu unduh semuanya sekaligus sebagai satu paket ZIP berisi sheet, frame, JSON per-animasi (format bawaan + format Aseprite), dan `manifest.json`. Menghapus animasi (satu per satu atau sekaligus) bisa diurungkan selama beberapa detik lewat tombol "Urungkan" yang muncul.
+- **Koleksi karakter**: kumpulkan beberapa animasi per karakter (autosave ke IndexedDB), lalu unduh semuanya sekaligus sebagai satu paket ZIP berisi sheet, frame, JSON per-animasi (format bawaan, Aseprite, dan Godot `.tres` versi 3 & 4), dan `manifest.json`. Menghapus animasi (satu per satu atau sekaligus) bisa diurungkan selama beberapa detik lewat tombol "Urungkan" yang muncul.
 - **Demo battle** (`battle.html`): battle turn-based sederhana (serang/skill/bertahan/item) yang langsung memuat pasangan PNG + JSON hasil generator, untuk mengecek apakah sprite sudah pas dipakai di game.
 
 ## Cara pakai
@@ -30,6 +30,7 @@ Semua diproses langsung di browser — tidak ada file yang diunggah ke mana pun.
    - **Unduh sheet PNG** — satu file sprite sheet.
    - **Unduh data JSON** — metadata (ukuran frame, grid, FPS, loop, hitbox).
    - **Unduh JSON (format Aseprite)** — metadata yang sama, ditulis ulang ke format Aseprite JSON (hash) supaya bisa dibaca tool/engine lain yang sudah mendukung format itu (mis. Phaser, importer pihak ketiga di Unity/Godot).
+   - **Unduh SpriteFrames (Godot 4 .tres)** / **Unduh SpriteFrames (Godot 3 .tres)** — resource native Godot (`SpriteFrames`), tiap frame jadi `AtlasTexture` yang me-region sheet PNG yang sama. Dua versi disediakan karena format resource teks Godot 3 dan 4 tidak kompatibel. Taruh file `.tres` satu folder dengan PNG sheet-nya, lalu pakai langsung di node `AnimatedSprite2D` (Godot 4) / `AnimatedSprite` (Godot 3) tanpa plugin tambahan.
 7. Untuk membuat satu karakter dengan banyak animasi: ulangi proses di atas, tekan **Tambah animasi ini ke koleksi** tiap selesai, lalu **Unduh koleksi (ZIP)** di akhir.
 8. Buka `battle.html` untuk mencoba sprite yang sudah diunduh di battle demo (pilih file PNG + JSON per slot animasi).
 
