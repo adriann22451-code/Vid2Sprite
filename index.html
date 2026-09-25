@@ -136,6 +136,17 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
       <div class="chk" id="kwrap" hidden><canvas id="kprev" style="max-width:100%"></canvas></div>
       <button class="btn sec full" id="kreapply" type="button" disabled>Terapkan ulang ke semua frame (tanpa proses ulang video)</button>
     </div>
+    <h3>Preset ekspor</h3>
+    <div class="fields" style="grid-template-columns:1fr 1fr;align-items:end">
+      <label class="f" style="grid-column:1/-1">Preset tersimpan<select id="presetSel"><option value="">— pilih preset —</option></select></label>
+      <label class="f" style="grid-column:1/-1">Nama preset baru<input type="text" id="presetName" placeholder="mis. Karakter A - hijau" maxlength="40"></label>
+    </div>
+    <div class="fields" style="margin-top:-6px">
+      <button class="btn sec" type="button" id="presetSave" style="grid-column:span 2">💾 Simpan sebagai preset</button>
+      <button class="btn sec" type="button" id="presetLoad" style="grid-column:span 1" disabled>↩ Terapkan</button>
+      <button class="btn sec" type="button" id="presetDel" style="grid-column:span 1" disabled>🗑 Hapus</button>
+    </div>
+    <p class="s" style="margin:8px 0 0;color:var(--mu);font-size:12.5px">Preset menyimpan lebar frame, kolom, FPS, dan pengaturan hapus-background, supaya bisa langsung dipakai lagi untuk animasi lain tanpa mengatur ulang.</p>
     <h3>Pratinjau rentang</h3>
     <button class="btn sec full" id="ptest" type="button" disabled>Pratinjau frame dalam rentang ini</button>
     <p class="s" style="margin:8px 0 0;color:var(--mu);font-size:12.5px">Cek dulu apakah rentang, ukuran, dan hapus-background sudah pas sebelum proses penuh (yang bisa makan waktu untuk video panjang).</p>
@@ -174,6 +185,17 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
       <label class="f">Kehalusan tepi<input type="range" id="isoft" min="1" max="60" value="15"></label>
       <label class="ck"><input type="checkbox" id="idesp" checked> Kurangi sisa warna hijau/biru di tepi (despill)</label>
     </div>
+    <h3>Preset ekspor</h3>
+    <div class="fields" style="grid-template-columns:1fr 1fr;align-items:end">
+      <label class="f" style="grid-column:1/-1">Preset tersimpan<select id="presetSelI"><option value="">— pilih preset —</option></select></label>
+      <label class="f" style="grid-column:1/-1">Nama preset baru<input type="text" id="presetNameI" placeholder="mis. Karakter A - putih" maxlength="40"></label>
+    </div>
+    <div class="fields" style="margin-top:-6px">
+      <button class="btn sec" type="button" id="presetSaveI" style="grid-column:span 2">💾 Simpan sebagai preset</button>
+      <button class="btn sec" type="button" id="presetLoadI" style="grid-column:span 1" disabled>↩ Terapkan</button>
+      <button class="btn sec" type="button" id="presetDelI" style="grid-column:span 1" disabled>🗑 Hapus</button>
+    </div>
+    <p class="s" style="margin:8px 0 0;color:var(--mu);font-size:12.5px">Preset menyimpan ukuran frame, kolom, FPS, intensitas gerak, dan pengaturan hapus-background.</p>
     <button class="btn full" id="igen" disabled>Buat animasi</button>
     <div class="status" id="imsg" role="status">Pilih gambar dulu.</div>
   </div>
@@ -690,7 +712,7 @@ g('padd').onclick=async()=>{
   const m=JSON.parse(JSON.stringify(meta));
   m.image=type+'_sheet.png';
   if(typeof m.loop!=='boolean')m.loop=T[type]?T[type].loop:false;
-  const entry={meta:m,frames:frameBlobs.slice(),sheet:sh};
+  const entry={meta:m,frames:frameBlobs.slice(),sheet:sh,addedAt:new Date().toISOString()};
   pack.set(type,entry);
   idbSet(type,entry);
   renderPack();
@@ -714,13 +736,14 @@ g('dpack').onclick=async()=>{
   try{
     g('pinfo').textContent='Membuat ZIP…';
     const name=(g('pname').value.trim()||'karakter').replace(/[^\w\-]+/g,'_');
-    const z=new JSZip(),root=z.folder(name),man={character:name,animations:{}};
+    const z=new JSZip(),root=z.folder(name);
+    const man={character:name,manifestVersion:2,generator:'Vid2Sprite',generatedAt:new Date().toISOString(),animations:{}};
     for(const [k,v] of pack){
       const m=v.meta,d=root.folder(k),pad=Math.max(3,String(v.frames.length).length);
       d.file(k+'_sheet.png',v.sheet); d.file(k+'.json',JSON.stringify(m,null,2));
       const fd=d.folder('frames');
       v.frames.forEach((b,i)=>fd.file(`${k}_${String(i+1).padStart(pad,'0')}.png`,b));
-      man.animations[k]={sheet:`${k}/${k}_sheet.png`,data:`${k}/${k}.json`,frames:m.frameCount||m.frames.length,fps:m.fps,loop:m.loop,frameWidth:m.frameWidth,frameHeight:m.frameHeight,columns:m.columns,rows:m.rows,hitbox:m.hitbox||null};
+      man.animations[k]={sheet:`${k}/${k}_sheet.png`,data:`${k}/${k}.json`,frames:m.frameCount||m.frames.length,fps:m.fps,loop:m.loop,frameWidth:m.frameWidth,frameHeight:m.frameHeight,columns:m.columns,rows:m.rows,hitbox:m.hitbox||null,addedAt:v.addedAt||null};
     }
     root.file('manifest.json',JSON.stringify(man,null,2));
     const blob=await z.generateAsync({type:'blob'});
@@ -780,6 +803,90 @@ g('ktest').addEventListener('click',()=>{
   test();
 });
 ['kmode','kcol','tol','ksoft','kdesp'].forEach(id=>g(id).addEventListener('input',()=>{if(!g('kwrap').hidden)test()}));
+})();
+</script>
+<script>
+/* ===== Preset ekspor (simpan/terapkan pengaturan lewat localStorage) ===== */
+(()=>{
+const g=id=>document.getElementById(id);
+const LS_V='v2s_presets_video', LS_I='v2s_presets_image';
+function loadPresets(key){ try{return JSON.parse(localStorage.getItem(key)||'{}')}catch(e){return {}} }
+function savePresets(key,obj){ try{localStorage.setItem(key,JSON.stringify(obj))}catch(e){} }
+
+function fieldsVideo(){
+  return {w:+g('w').value,cols:+g('cols').value,fps:+g('fps').value,
+    key:g('key').checked,kmode:g('kmode').value,kcol:g('kcol').value,
+    tol:+g('tol').value,ksoft:+g('ksoft').value,kdesp:g('kdesp').checked};
+}
+function applyVideo(p){
+  if(p.w!=null)g('w').value=p.w;
+  if(p.cols!=null)g('cols').value=p.cols;
+  if(p.fps!=null)g('fps').value=p.fps;
+  g('key').checked=!!p.key; g('tolw').style.display=p.key?'flex':'none';
+  if(p.kmode!=null){g('kmode').value=p.kmode; g('kcolw').hidden=p.kmode!=='custom';}
+  if(p.kcol!=null)g('kcol').value=p.kcol;
+  if(p.tol!=null)g('tol').value=p.tol;
+  if(p.ksoft!=null)g('ksoft').value=p.ksoft;
+  g('kdesp').checked=!!p.kdesp;
+  if(typeof updH==='function')updH();
+}
+function fieldsImage(){
+  return {isize:+g('isize').value,icols:+g('icols').value,ifps:+g('ifps').value,iint:+g('iint').value,
+    ikey:g('ikey').checked,imode:g('imode').value,icol:g('icol').value,
+    itol:+g('itol').value,isoft:+g('isoft').value,idesp:g('idesp').checked};
+}
+function applyImage(p){
+  if(p.isize!=null)g('isize').value=p.isize;
+  if(p.icols!=null)g('icols').value=p.icols;
+  if(p.ifps!=null)g('ifps').value=p.ifps;
+  if(p.iint!=null)g('iint').value=p.iint;
+  g('ikey').checked=!!p.ikey; g('itolw').style.display=p.ikey?'flex':'none';
+  if(p.imode!=null){g('imode').value=p.imode; g('icolw').hidden=p.imode!=='custom';}
+  if(p.icol!=null)g('icol').value=p.icol;
+  if(p.itol!=null)g('itol').value=p.itol;
+  if(p.isoft!=null)g('isoft').value=p.isoft;
+  g('idesp').checked=!!p.idesp;
+}
+
+function wire(selId,nameId,saveId,loadId,delId,storeKey,getFields,applyFields){
+  const sel=g(selId);
+  function refresh(pick){
+    const store=loadPresets(storeKey);
+    sel.textContent='';
+    const first=document.createElement('option'); first.value=''; first.textContent='— pilih preset —';
+    sel.appendChild(first);
+    Object.keys(store).sort().forEach(k=>{
+      const o=document.createElement('option'); o.value=k; o.textContent=k; sel.appendChild(o);
+    });
+    if(pick && store[pick])sel.value=pick;
+    const has=!!sel.value;
+    g(loadId).disabled=!has; g(delId).disabled=!has;
+  }
+  sel.addEventListener('change',()=>{const has=!!sel.value; g(loadId).disabled=!has; g(delId).disabled=!has;});
+  g(saveId).addEventListener('click',()=>{
+    const name=g(nameId).value.trim();
+    if(!name){g(nameId).focus();return}
+    const store=loadPresets(storeKey);
+    store[name]=getFields();
+    savePresets(storeKey,store);
+    g(nameId).value='';
+    refresh(name);
+  });
+  g(loadId).addEventListener('click',()=>{
+    const store=loadPresets(storeKey);
+    if(store[sel.value])applyFields(store[sel.value]);
+  });
+  g(delId).addEventListener('click',()=>{
+    if(!sel.value)return;
+    const store=loadPresets(storeKey);
+    delete store[sel.value];
+    savePresets(storeKey,store);
+    refresh();
+  });
+  refresh();
+}
+wire('presetSel','presetName','presetSave','presetLoad','presetDel',LS_V,fieldsVideo,applyVideo);
+wire('presetSelI','presetNameI','presetSaveI','presetLoadI','presetDelI',LS_I,fieldsImage,applyImage);
 })();
 </script>
 </body>
