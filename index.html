@@ -80,6 +80,10 @@ canvas{display:block;max-width:none}
 .ck{display:flex;align-items:center;gap:10px;min-height:44px;font-size:13.5px;font-weight:600;color:var(--tx);cursor:pointer}
 input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);border-radius:9px;background:var(--sf2)}
 .foot{margin-top:22px;color:var(--mu);font-size:12.5px}
+.toolnav{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+.toolnav a{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border-radius:9px;border:1.5px solid var(--ln);color:var(--tx);text-decoration:none;font:700 13px Manrope,sans-serif;white-space:nowrap}
+.toolnav a:hover{border-color:var(--ac)}
+@media (max-width:480px){header{flex-wrap:wrap}.toolnav{margin-left:0;width:100%}.toolnav a{flex:1;justify-content:center}}
 </style>
 </head>
 <body>
@@ -87,6 +91,10 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
 <header>
   <span class="strip" aria-hidden="true"><i style="--i:0"></i><i style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i><i style="--i:4"></i><i style="--i:5"></i></span>
   <span class="word">Video to Sprite</span>
+  <nav class="toolnav">
+    <a href="battle.html">⚔️ Demo battle</a>
+    <a href="parallax.html">🏞️ Parallax</a>
+  </nav>
 </header>
 
 <nav class="seg" role="tablist" aria-label="Mode">
@@ -296,7 +304,7 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
   </div>
 </section>
 </main>
-<p class="foot">Semua diproses di browser kamu. File tidak diunggah ke server. <a href="battle.html" style="color:inherit;font-weight:700">Coba demo battle</a> · <a href="parallax.html" style="color:inherit;font-weight:700">Tool parallax background</a></p>
+<p class="foot">Semua diproses di browser kamu. File tidak diunggah ke server.</p>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
