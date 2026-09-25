@@ -251,6 +251,14 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
     <div>
       <h3>Pratinjau animasi</h3>
       <div class="chk" style="display:inline-block;position:relative"><canvas id="prev"></canvas><div id="hbox" hidden></div></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn sec" type="button" id="pvtoggle" style="min-height:36px;padding:0 14px">⏸ Jeda</button>
+        <button class="btn sec" type="button" id="pvprev" style="min-height:36px;padding:0 12px" disabled>◀</button>
+        <button class="btn sec" type="button" id="pvnext" style="min-height:36px;padding:0 12px" disabled>▶</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;cursor:pointer"><input type="checkbox" id="onion" disabled> Onion skin</label>
+        <span id="pvidx" style="font-size:12px;color:var(--mu)"></span>
+      </div>
+      <p class="s" style="margin:4px 0 0;color:var(--mu);font-size:12px">Jeda lalu aktifkan onion skin untuk lihat frame sebelum (biru) dan sesudah (merah) secara transparan di belakang frame sekarang — bantu cek gerakan yang meloncat.</p>
     </div>
     <div class="side">
       <div class="chips" id="stats"></div>
@@ -1226,7 +1234,51 @@ async function rebuildAfterEdit(){
 
 /* dipanggil ulang tiap kali sheet baru dibuat (video/gambar) supaya strip editor ikut ter-refresh */
 const basePlayFE=window.play;
-window.play=function(){ basePlayFE(); renderFrameEditor(); };
+window.play=function(){ basePlayFE(); renderFrameEditor(); resetStepper(); };
+
+/* ===== Onion skinning: jeda animasi, langkah manual per-frame, tampilkan ghost frame sebelum/sesudah ===== */
+let stepMode=false,curFrame=0;
+function resetStepper(){
+  stepMode=false; curFrame=0;
+  g('pvtoggle').textContent='⏸ Jeda';
+  g('pvprev').disabled=true; g('pvnext').disabled=true; g('onion').disabled=true; g('onion').checked=false;
+  g('pvidx').textContent='';
+}
+function tintFrame(f,w,h,color){
+  const t=document.createElement('canvas'); t.width=w; t.height=h;
+  const tc=t.getContext('2d');
+  tc.drawImage(sheet,f.x,f.y,w,h,0,0,w,h);
+  tc.globalCompositeOperation='source-atop';
+  tc.fillStyle=color; tc.fillRect(0,0,w,h);
+  return t;
+}
+function drawStep(){
+  if(!meta)return;
+  const {frameWidth:w,frameHeight:h,frames}=meta,pc=g('prev').getContext('2d');
+  pc.clearRect(0,0,w,h);
+  if(g('onion').checked){
+    if(frames[curFrame-1]){ pc.globalAlpha=.35; pc.drawImage(tintFrame(frames[curFrame-1],w,h,'#3b82f6'),0,0); pc.globalAlpha=1; }
+    if(frames[curFrame+1]){ pc.globalAlpha=.35; pc.drawImage(tintFrame(frames[curFrame+1],w,h,'#ef4444'),0,0); pc.globalAlpha=1; }
+  }
+  pc.drawImage(sheet,frames[curFrame].x,frames[curFrame].y,w,h,0,0,w,h);
+  g('pvidx').textContent=`Frame ${curFrame+1} / ${frames.length}`;
+  g('pvprev').disabled=curFrame<=0; g('pvnext').disabled=curFrame>=frames.length-1;
+}
+g('pvtoggle').addEventListener('click',()=>{
+  if(!meta)return;
+  stepMode=!stepMode;
+  if(stepMode){
+    clearInterval(timer); g('pvtoggle').textContent='▶ Putar';
+    g('pvprev').disabled=false; g('pvnext').disabled=false; g('onion').disabled=false;
+    drawStep();
+  }else{
+    g('pvtoggle').textContent='⏸ Jeda'; g('pvprev').disabled=true; g('pvnext').disabled=true;
+    g('onion').disabled=true; g('pvidx').textContent=''; play();
+  }
+});
+g('pvprev').addEventListener('click',()=>{ if(curFrame>0){curFrame--; drawStep();} });
+g('pvnext').addEventListener('click',()=>{ if(meta&&curFrame<meta.frames.length-1){curFrame++; drawStep();} });
+g('onion').addEventListener('change',drawStep);
 })();
 </script>
 </body>
