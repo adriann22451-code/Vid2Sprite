@@ -638,16 +638,22 @@ $('tiltGyroBtn').addEventListener('click',()=>{
     bindGyroTilt();
   }
 });
-let gyroBound=false;
+let gyroBound=false,gyroGotEvent=false;
 function bindGyroTilt(){
   if(gyroBound)return;gyroBound=true;
   window.addEventListener('deviceorientation',e=>{
     if(e.gamma==null||e.beta==null)return;
+    gyroGotEvent=true;
     tiltTX=Math.max(-1,Math.min(1,e.gamma/30));
     tiltTY=Math.max(-1,Math.min(1,(e.beta-45)/30));
     moveShine(tiltTX,tiltTY);
   });
-  showTiltMsg('Gyroscope aktif — miringkan HP.');
+  showTiltMsg('Mencoba mengaktifkan gyroscope...');
+  setTimeout(()=>{
+    if(gyroGotEvent){showTiltMsg('Gyroscope aktif — miringkan HP.');return;}
+    const reason=!window.isSecureContext?' Kemungkinan karena file ini dibuka langsung dari penyimpanan (file://), bukan lewat https/localhost — browser blokir akses sensor di luar itu.':' Device/browser ini sepertinya tidak mengirim data sensor orientasi.';
+    showTiltMsg('Gyroscope tidak merespon.'+reason+' Geser jari langsung di atas kartu sebagai gantinya — itu sudah bisa dipakai tanpa gyroscope.',true);
+  },1200);
 }
 function showTiltMsg(text,fail){ const el=$('tiltMsg'); el.style.display='block'; el.className='rep'+(fail?' fail':''); el.textContent=text; }
 $('exportWidgetBtn').addEventListener('click',()=>{
@@ -666,11 +672,13 @@ function buildWidgetHtml(imgData,depthData,strength,shine){
 <style>
 html,body{margin:0;height:100%;overflow:hidden;background:transparent}
 .wrap{position:relative;width:100%;height:100%}
-canvas{display:block;width:100%;height:100%}
+canvas{display:block;width:100%;height:100%;touch-action:none}
 .shine{position:absolute;inset:0;pointer-events:none;mix-blend-mode:overlay;opacity:.5}
 .gbtn{position:absolute;bottom:8px;right:8px;font:12px sans-serif;padding:6px 10px;border-radius:8px;border:none;background:rgba(0,0,0,.55);color:#fff;cursor:pointer}
+.gmsg{position:absolute;bottom:40px;right:8px;left:8px;font:11px sans-serif;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.65);color:#fff;text-align:right;display:none}
 </style></head><body>
 <div class="wrap" id="w"><canvas id="c"></canvas><div class="shine" id="s" style="display:${shine?'block':'none'}"></div>
+<div class="gmsg" id="gm"></div>
 <button class="gbtn" id="g">📱 Gyroscope</button></div>
 <script>
 const IMG_SRC=${JSON.stringify(imgData)},DEPTH_SRC=${JSON.stringify(depthData)},STRENGTH=${strength};
@@ -704,11 +712,24 @@ wrap.addEventListener('pointermove',e=>{const r=wrap.getBoundingClientRect();
 wrap.addEventListener('pointerleave',()=>{tx=0;ty=0;moveShine();});
 function moveShine(){shine.style.background='radial-gradient(circle at '+((tx*0.5+0.5)*100)+'% '+((ty*0.5+0.5)*100)+'%, rgba(255,255,255,.9), transparent 55%)';}
 document.getElementById('g').addEventListener('click',()=>{
-  const start=()=>window.addEventListener('deviceorientation',e=>{
-    if(e.gamma==null||e.beta==null)return;
-    tx=Math.max(-1,Math.min(1,e.gamma/30));ty=Math.max(-1,Math.min(1,(e.beta-45)/30));moveShine();});
+  const gm=document.getElementById('gm');
+  let got=false;
+  const start=()=>{
+    window.addEventListener('deviceorientation',e=>{
+      if(e.gamma==null||e.beta==null)return;
+      got=true;
+      tx=Math.max(-1,Math.min(1,e.gamma/30));ty=Math.max(-1,Math.min(1,(e.beta-45)/30));moveShine();
+    });
+    setTimeout(()=>{
+      if(got)return;
+      gm.style.display='block';
+      gm.textContent=!window.isSecureContext
+        ?'Gyroscope diblokir: buka via https/localhost (bukan file lokal), atau geser jari di kartu.'
+        :'Gyroscope tidak terdeteksi di perangkat ini — geser jari di kartu sebagai gantinya.';
+    },1200);
+  };
   if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
-    DeviceOrientationEvent.requestPermission().then(s=>{if(s==='granted')start();});
+    DeviceOrientationEvent.requestPermission().then(s=>{ if(s==='granted')start(); else{gm.style.display='block';gm.textContent='Izin gyroscope ditolak — geser jari di kartu sebagai gantinya.';} });
   }else start();
 });
 (function loop(){
