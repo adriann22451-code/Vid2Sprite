@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Parallax Layer Tool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#121826;--sf:#1a2236;--sf2:#212b43;--ln:#2c3853;--tx:#eaf0fb;--mu:#93a1bd;--ac:#ffc93c;--acd:#a87a00;--acx:#1b1400;--fo:#ffc93c}
+@media (prefers-color-scheme:light){:root{--bg:#eef2f9;--sf:#fff;--sf2:#f3f6fb;--ln:#d3dbea;--tx:#141b2d;--mu:#5d6b88;--acd:#c79400;--fo:#1a56db}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 Manrope,system-ui,sans-serif;padding:env(safe-area-inset-top,0) 0 calc(env(safe-area-inset-bottom,0px) + 32px)}
+:focus-visible{outline:2px solid var(--fo);outline-offset:2px}
+.w{max-width:820px;margin:0 auto;padding:0 16px}
+header{display:flex;justify-content:space-between;align-items:center;padding:20px 0 12px;gap:12px}
+.word{font-family:Silkscreen,ui-monospace,monospace;font-size:18px}
+a.back{color:var(--mu);font-weight:700;font-size:14px;text-decoration:none;padding:10px 0}
+a.back:hover{color:var(--tx)}
+canvas{display:block;width:100%;height:auto;border-radius:14px;border:1px solid var(--ln);background:#0c1120;touch-action:manipulation}
+.bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin:12px 0}
+.btn{min-height:44px;padding:0 20px;border:0;border-radius:11px;background:var(--ac);color:var(--acx);font:800 14.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 4px 0 var(--acd)}
+.btn:active:not(:disabled){transform:translateY(3px);box-shadow:0 1px 0 var(--acd)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.sec{background:transparent;color:var(--tx);border:1.5px solid var(--ln);box-shadow:none}
+.btn.sec:hover{border-color:var(--ac)}
+.btn.sm{min-height:36px;padding:0 14px;font-size:13px;box-shadow:0 3px 0 var(--acd)}
+.btn.sm.sec{box-shadow:none}
+.fileBtn{position:relative;overflow:hidden;display:inline-block}
+.fileBtn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+label.c{display:flex;align-items:center;gap:8px;min-height:40px;font-weight:600;font-size:13.5px}
+input[type=number]{width:68px;padding:6px 8px;border-radius:8px;border:1px solid var(--ln);background:var(--sf);color:var(--tx);font:600 13px Manrope,sans-serif}
+input[type=range]{width:120px;accent-color:var(--ac)}
+input[type=color]{width:38px;height:32px;padding:0;border:1px solid var(--ln);border-radius:8px;background:none}
+input[type=text]{padding:6px 8px;border-radius:8px;border:1px solid var(--ln);background:var(--sf);color:var(--tx);font:600 13px Manrope,sans-serif;width:120px}
+.box{background:var(--sf);border:1px solid var(--ln);border-radius:14px;padding:16px;margin-top:14px}
+h2{margin:0 0 4px;font-size:16px}
+p.s{margin:0 0 12px;color:var(--mu);font-size:13.5px}
+.layers{display:flex;flex-direction:column;gap:8px}
+.card{padding:10px 12px;border:1px solid var(--ln);border-radius:10px;background:var(--sf2)}
+.card .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.thumb{width:40px;height:40px;border-radius:6px;object-fit:cover;border:1px solid var(--ln);background:#0c1120}
+.card .fields{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:8px;font-size:12.5px;color:var(--mu)}
+.card .fields label{display:flex;flex-direction:column;gap:3px}
+.addrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.rep{padding:8px 10px;border-radius:8px;background:var(--sf2);border:1px solid var(--ln);font-size:13px;margin-top:8px}
+.rep.fail{border-color:#ff6b6b}
+.hint{color:var(--mu);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="w">
+<header><span class="word">Parallax Layer Tool</span><a class="back" href="index.html">Kembali ke tool</a></header>
+<p class="s">Susun beberapa layer gambar (langit, gunung, pohon, tanah, dll) jadi background parallax untuk game 2D. Layer paling atas di daftar = paling belakang (bergerak paling lambat); paling bawah = paling depan (paling cepat).</p>
+
+<canvas id="cv" width="640" height="300" aria-label="Pratinjau parallax"></canvas>
+
+<div class="bar">
+  <button class="btn" id="play">▶ Putar</button>
+  <label class="c">Kecepatan kamera <input type="number" id="baseSpeed" value="80" step="5"> px/dtk</label>
+  <label class="c">Arah <select id="dir"><option value="1">Kanan → Kiri</option><option value="-1">Kiri → Kanan</option></select></label>
+  <label class="c">Warna latar <input type="color" id="bgColor" value="#0c1120"></label>
+</div>
+<div class="bar">
+  <label class="c" style="flex:1;min-width:220px">Scrub manual (nonaktif saat diputar)<input type="range" id="scrub" min="-3000" max="3000" value="0" style="width:100%"></label>
+</div>
+
+<section class="box">
+  <h2>Layer</h2>
+  <p class="s hint">Tiap layer: <b>Speed</b> 0 = diam (misal matahari/langit jauh), 1 = ikut kecepatan kamera penuh (layer paling depan biasanya di atas 1). <b>Tinggi</b> = persentase tinggi kanvas. <b>Posisi Y</b> 0% = nempel atas, 100% = nempel bawah. <b>Ulangi</b> = di-tile horizontal supaya scroll tanpa putus (matikan untuk elemen unik seperti satu bangunan).</p>
+  <div class="layers" id="layerList"></div>
+  <div class="addrow">
+    <span class="btn sm fileBtn">+ Tambah layer (gambar)<input type="file" accept="image/*" multiple id="addLayer"></span>
+  </div>
+</section>
+
+<section class="box">
+  <h2>Ekspor</h2>
+  <p class="s">ZIP berisi PNG tiap layer (sudah diberi nomor urut), <code>layers.json</code> (metadata untuk dipakai ulang di engine/kode kamu), dan satu file <code>preview.html</code> mandiri yang bisa langsung dibuka di browser.</p>
+  <div class="bar">
+    <button class="btn" id="exportZip">Unduh ZIP (PNG + JSON + HTML)</button>
+    <button class="btn sec" id="exportHtml">Unduh HTML mandiri saja</button>
+    <button class="btn sec" id="exportJson">Unduh JSON saja</button>
+  </div>
+  <div id="exportMsg" class="rep" style="display:none"></div>
+</section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const cv=$('cv'),ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
+
+/* ---- state ---- */
+let layers=[]; // {id,name,img,file,speed,heightPct,posPct,opacity,repeatX}
+let uid=1;
+let camera=0, playing=false;
+
+function defaultSpeedFor(index,total){
+  if(total<=1)return 0.6;
+  return +(0.15+ (index/(total-1))*1.0).toFixed(2);
+}
+function addLayerFile(file){
+  const url=URL.createObjectURL(file);
+  const img=new Image();
+  img.onload=()=>{
+    const l={id:uid++,name:file.name.replace(/\.[a-z0-9]+$/i,''),img,file,
+      speed:defaultSpeedFor(layers.length,layers.length+1),heightPct:100,posPct:100,opacity:1,repeatX:true};
+    layers.push(l);
+    layers.forEach((ly,i)=>{ if(ly!==l) return; }); // no-op, keeps order as inserted
+    renderLayers();
+  };
+  img.onerror=()=>{ showExportMsg('Gagal memuat gambar: '+file.name,true); };
+  img.src=url;
+}
+$('addLayer').addEventListener('change',e=>{
+  [...e.target.files].forEach(addLayerFile);
+  e.target.value='';
+});
+function moveLayer(i,dir){
+  const j=i+dir; if(j<0||j>=layers.length)return;
+  const t=layers[i];layers[i]=layers[j];layers[j]=t;
+  renderLayers();
+}
+function removeLayer(id){
+  layers=layers.filter(l=>l.id!==id);
+  renderLayers();
+}
+function renderLayers(){
+  const box=$('layerList');box.textContent='';
+  layers.forEach((l,i)=>{
+    const card=document.createElement('div');card.className='card';
+    const top=document.createElement('div');top.className='top';
+    const th=document.createElement('img');th.className='thumb';th.src=l.img.src;top.appendChild(th);
+    const nm=document.createElement('input');nm.type='text';nm.value=l.name;
+    nm.addEventListener('input',()=>{l.name=nm.value;});
+    top.appendChild(nm);
+    const up=document.createElement('button');up.className='btn sm sec';up.textContent='↑';up.disabled=i===0;
+    up.addEventListener('click',()=>moveLayer(i,-1));top.appendChild(up);
+    const dn=document.createElement('button');dn.className='btn sm sec';dn.textContent='↓';dn.disabled=i===layers.length-1;
+    dn.addEventListener('click',()=>moveLayer(i,1));top.appendChild(dn);
+    const rm=document.createElement('button');rm.className='btn sm sec';rm.textContent='Hapus';
+    rm.addEventListener('click',()=>removeLayer(l.id));top.appendChild(rm);
+    card.appendChild(top);
+
+    const fields=document.createElement('div');fields.className='fields';
+    function numField(labelTxt,val,step,min,max,onChange){
+      const lab=document.createElement('label');lab.textContent=labelTxt;
+      const inp=document.createElement('input');inp.type='number';inp.value=val;inp.step=step;
+      if(min!==undefined)inp.min=min; if(max!==undefined)inp.max=max;
+      inp.addEventListener('input',()=>onChange(+inp.value));
+      lab.appendChild(inp);return lab;
+    }
+    fields.appendChild(numField('Speed',l.speed,0.05,0,3,v=>l.speed=v));
+    fields.appendChild(numField('Tinggi (%)',l.heightPct,5,5,300,v=>l.heightPct=v));
+    fields.appendChild(numField('Posisi Y (%)',l.posPct,5,0,100,v=>l.posPct=v));
+    fields.appendChild(numField('Opacity',l.opacity,0.05,0,1,v=>l.opacity=v));
+    const repLab=document.createElement('label');repLab.style.flexDirection='row';repLab.style.alignItems='center';repLab.style.gap='6px';
+    const repCb=document.createElement('input');repCb.type='checkbox';repCb.checked=l.repeatX;
+    repCb.addEventListener('change',()=>l.repeatX=repCb.checked);
+    repLab.appendChild(repCb);repLab.appendChild(document.createTextNode('Ulangi (tile)'));
+    fields.appendChild(repLab);
+    card.appendChild(fields);
+    box.appendChild(card);
+  });
+}
+
+/* ---- kontrol pratinjau ---- */
+$('play').addEventListener('click',()=>{
+  playing=!playing;
+  $('play').textContent=playing?'⏸ Jeda':'▶ Putar';
+  $('scrub').disabled=playing;
+});
+$('scrub').addEventListener('input',()=>{ if(!playing) camera=+$('scrub').value; });
+
+/* ---- gambar ---- */
+function drawLayer(l){
+  const drawH=H*(l.heightPct/100);
+  const drawW=drawH*(l.img.naturalWidth/l.img.naturalHeight);
+  const y=(H-drawH)*(l.posPct/100);
+  const dirSign=+$('dir').value;
+  const offset=camera*l.speed*dirSign;
+  ctx.globalAlpha=l.opacity;
+  if(l.repeatX&&drawW>0){
+    let startX=-(((offset%drawW)+drawW)%drawW)-drawW;
+    for(let x=startX;x<W+drawW;x+=drawW){
+      ctx.drawImage(l.img,x,y,drawW,drawH);
+    }
+  }else{
+    ctx.drawImage(l.img,W/2-drawW/2-offset,y,drawW,drawH);
+  }
+  ctx.globalAlpha=1;
+}
+function draw(){
+  ctx.fillStyle=$('bgColor').value;
+  ctx.fillRect(0,0,W,H);
+  layers.forEach(drawLayer);
+  if(!layers.length){
+    ctx.font='700 13px Manrope,sans-serif';ctx.textAlign='center';ctx.fillStyle='#93a1bd';
+    ctx.fillText('Tambah layer gambar di bawah untuk mulai.',W/2,H/2);
+  }
+}
+let last=performance.now();
+function loop(now){
+  const dt=Math.min(50,now-last);last=now;
+  if(playing){
+    camera+=(dt/1000)*(+$('baseSpeed').value);
+    $('scrub').value=Math.max(-3000,Math.min(3000,camera));
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ---- ekspor ---- */
+function showExportMsg(msg,fail){
+  const el=$('exportMsg');el.style.display='block';el.className='rep'+(fail?' fail':'');el.textContent=msg;
+}
+function layersMeta(){
+  return {
+    generator:'Vid2Sprite Parallax Tool',
+    canvas:{width:W,height:H},
+    background:$('bgColor').value,
+    baseSpeed:+$('baseSpeed').value,
+    direction:+$('dir').value,
+    layers:layers.map((l,i)=>({order:i,name:l.name,file:String(i+1).padStart(2,'0')+'_'+l.name.replace(/[^a-z0-9_-]/gi,'_')+'.png',
+      speed:l.speed,heightPct:l.heightPct,posPct:l.posPct,opacity:l.opacity,repeatX:l.repeatX}))
+  };
+}
+function fileToDataURL(file){
+  return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});
+}
+async function buildStandaloneHtml(){
+  const meta=layersMeta();
+  const dataUrls=await Promise.all(layers.map(l=>fileToDataURL(l.file)));
+  const layersJs=meta.layers.map((m,i)=>({...m,src:dataUrls[i]}));
+  return `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parallax Preview</title>
+<style>html,body{margin:0;background:#000}canvas{display:block;width:100%;height:auto}
+.bar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:8px;padding:8px;background:#0008;font:14px sans-serif}
+.bar button{padding:6px 14px;border:0;border-radius:8px;background:#ffc93c;font-weight:700;cursor:pointer}</style>
+</head><body>
+<canvas id="cv" width="${meta.canvas.width}" height="${meta.canvas.height}"></canvas>
+<div class="bar"><button id="play">Jeda</button><span style="color:#fff;align-self:center">Parallax dibuat dengan Vid2Sprite</span></div>
+<script>
+const DATA=${JSON.stringify(layersJs)};
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
+const BG=${JSON.stringify(meta.background)},SPEED=${meta.baseSpeed},DIR=${meta.direction};
+let playing=true,camera=0,last=performance.now();
+document.getElementById('play').addEventListener('click',e=>{playing=!playing;e.target.textContent=playing?'Jeda':'Putar';});
+const imgs=DATA.map(d=>{const i=new Image();i.src=d.src;return i;});
+function drawLayer(l,img){
+  const drawH=H*(l.heightPct/100),drawW=drawH*(img.naturalWidth/img.naturalHeight||1);
+  const y=(H-drawH)*(l.posPct/100),offset=camera*l.speed*DIR;
+  ctx.globalAlpha=l.opacity;
+  if(l.repeatX&&drawW>0){
+    let startX=-(((offset%drawW)+drawW)%drawW)-drawW;
+    for(let x=startX;x<W+drawW;x+=drawW)ctx.drawImage(img,x,y,drawW,drawH);
+  }else ctx.drawImage(img,W/2-drawW/2-offset,y,drawW,drawH);
+  ctx.globalAlpha=1;
+}
+function loop(now){
+  const dt=Math.min(50,now-last);last=now;
+  if(playing)camera+=(dt/1000)*SPEED;
+  ctx.fillStyle=BG;ctx.fillRect(0,0,W,H);
+  DATA.forEach((l,i)=>drawLayer(l,imgs[i]));
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+<\/script></body></html>`;
+}
+function downloadBlob(blob,name){
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();a.remove();
+}
+$('exportJson').addEventListener('click',()=>{
+  if(!layers.length)return showExportMsg('Belum ada layer.',true);
+  downloadBlob(new Blob([JSON.stringify(layersMeta(),null,2)],{type:'application/json'}),'layers.json');
+  showExportMsg('layers.json diunduh.');
+});
+$('exportHtml').addEventListener('click',async()=>{
+  if(!layers.length)return showExportMsg('Belum ada layer.',true);
+  try{
+    const html=await buildStandaloneHtml();
+    downloadBlob(new Blob([html],{type:'text/html'}),'parallax_preview.html');
+    showExportMsg('parallax_preview.html diunduh.');
+  }catch(e){showExportMsg('Gagal membuat HTML: '+e.message,true);}
+});
+$('exportZip').addEventListener('click',async()=>{
+  if(!layers.length)return showExportMsg('Belum ada layer.',true);
+  try{
+    const zip=new JSZip();
+    const meta=layersMeta();
+    meta.layers.forEach((m,i)=>zip.file(m.file,layers[i].file));
+    zip.file('layers.json',JSON.stringify(meta,null,2));
+    zip.file('preview.html',await buildStandaloneHtml());
+    const blob=await zip.generateAsync({type:'blob'});
+    downloadBlob(blob,'parallax_pack.zip');
+    showExportMsg('parallax_pack.zip diunduh.');
+  }catch(e){showExportMsg('Gagal membuat ZIP: '+e.message,true);}
+});
+</script>
+</body>
+</html>
