@@ -57,6 +57,7 @@ label.c input[type=range]{padding:0}
     <button class="tabbtn active" data-tab="depth">1) Lukis Depth</button>
     <button class="tabbtn" data-tab="anim">2) Animasi &amp; Export</button>
     <button class="tabbtn" data-tab="mesh">3) Model 3D</button>
+    <button class="tabbtn" data-tab="tilt">4) Tilt Card</button>
   </div>
 
   <div class="tabpane active" id="paneDepth">
@@ -119,6 +120,21 @@ label.c input[type=range]{padding:0}
     </div>
     <div class="rep" id="meshMsg"></div>
   </div>
+
+  <div class="tabpane" id="paneTilt">
+    <p class="hint">Gerakin mouse (atau miringin HP) di atas kartu — bagian dekat gerak lebih jauh dari bagian jauh, kesannya jadi kayak kartu hologram/relief, cocok buat preview karakter di menu game (bukan buat diputer 360°).</p>
+    <div class="stage" id="tiltWrap" style="position:relative"><canvas class="view" id="tiltView"></canvas><div id="tiltShine" style="position:absolute;inset:0;pointer-events:none;mix-blend-mode:overlay;opacity:.5;background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.9),transparent 55%)"></div></div>
+    <div class="row">
+      <label class="c">Kekuatan tilt<input type="range" id="tiltStrength" min="5" max="100" value="35"></label>
+      <label class="chk"><input type="checkbox" id="tiltShineChk" checked>Efek kilau (shine)</label>
+      <button class="btn sm" id="tiltGyroBtn">📱 Aktifkan gyroscope</button>
+    </div>
+    <div class="row">
+      <button class="btn pri" id="exportWidgetBtn">⬇ Export widget (HTML mandiri, siap tempel ke game)</button>
+    </div>
+    <p class="hint">File hasil export berdiri sendiri (gambar & depth map ikut ter-embed) — tinggal buka langsung, atau taruh di <code>&lt;iframe src="tilt-card.html"&gt;</code> di halaman/UI game kamu.</p>
+    <div class="rep" id="tiltMsg"></div>
+  </div>
 </section>
 
 </main>
@@ -164,10 +180,11 @@ document.querySelectorAll('.tabbtn').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.tabbtn').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.tabpane').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');
-  const map={depth:'paneDepth',anim:'paneAnim',mesh:'paneMesh'};
+  const map={depth:'paneDepth',anim:'paneAnim',mesh:'paneMesh',tilt:'paneTilt'};
   $(map[b.dataset.tab]).classList.add('active');
   if(b.dataset.tab==='anim')uploadTextures();
   if(b.dataset.tab==='mesh'){ initMesh(); buildMesh(); resizeMeshRenderer(); }
+  if(b.dataset.tab==='tilt'){ initTilt(); resizeTiltRenderer(); }
 }));
 
 /* ---------- depth painting ---------- */
@@ -510,7 +527,7 @@ $('exportObj').addEventListener('click',()=>{
   downloadBlob(new Blob([str],{type:'text/plain'}),'model3d.obj');
   showMeshMsg('model3d.obj diunduh (tanpa tekstur — pakai .glb kalau butuh warnanya ikut).');
 });
-window.addEventListener('resize',resizeMeshRenderer);
+window.addEventListener('resize',()=>{ resizeMeshRenderer(); resizeTiltRenderer(); });
 
 function showMsg(text,fail){ const el=$('msg'); el.style.display='block'; el.className='rep'+(fail?' fail':''); el.textContent=text; }
 $('exportBtn').addEventListener('click',()=>{
@@ -536,6 +553,175 @@ $('exportBtn').addEventListener('click',()=>{
   showMsg('Merekam '+dur+' detik...');
   setTimeout(()=>rec.stop(),dur*1000+150);
 });
+
+/* ---------- 4) Tilt Card (hover/gyro) ---------- */
+let glT,progT,texImageT,texDepthT,uOffsetT,tiltTexReady=false;
+let tiltTX=0,tiltTY=0,tiltCX=0,tiltCY=0; // target vs current (untuk smoothing)
+function initTilt(){
+  if(glT||typeof WebGLRenderingContext==='undefined')return;
+  const canvas=$('tiltView');
+  glT=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
+  if(!glT)return;
+  const vsSrc=`attribute vec2 aPos;varying vec2 vUv;void main(){vUv=aPos*0.5+0.5;gl_Position=vec4(aPos,0.0,1.0);}`;
+  const fsSrc=`precision mediump float;varying vec2 vUv;uniform sampler2D uImage;uniform sampler2D uDepth;uniform vec2 uOffset;
+    void main(){
+      float d=texture2D(uDepth,vUv).r*2.0-1.0;
+      vec2 duv=clamp(vUv-uOffset*d,0.0,1.0);
+      gl_FragColor=texture2D(uImage,duv);
+    }`;
+  function compile(type,src){const s=glT.createShader(type);glT.shaderSource(s,src);glT.compileShader(s);return s;}
+  progT=glT.createProgram();
+  glT.attachShader(progT,compile(glT.VERTEX_SHADER,vsSrc));
+  glT.attachShader(progT,compile(glT.FRAGMENT_SHADER,fsSrc));
+  glT.linkProgram(progT);glT.useProgram(progT);
+  const buf=glT.createBuffer();
+  glT.bindBuffer(glT.ARRAY_BUFFER,buf);
+  glT.bufferData(glT.ARRAY_BUFFER,new Float32Array([-1,-1, 1,-1, -1,1, 1,1]),glT.STATIC_DRAW);
+  const aPos=glT.getAttribLocation(progT,'aPos');
+  glT.enableVertexAttribArray(aPos);glT.vertexAttribPointer(aPos,2,glT.FLOAT,false,0,0);
+  uOffsetT=glT.getUniformLocation(progT,'uOffset');
+  function makeTexT(){
+    const t=glT.createTexture();glT.bindTexture(glT.TEXTURE_2D,t);
+    glT.texParameteri(glT.TEXTURE_2D,glT.TEXTURE_WRAP_S,glT.CLAMP_TO_EDGE);
+    glT.texParameteri(glT.TEXTURE_2D,glT.TEXTURE_WRAP_T,glT.CLAMP_TO_EDGE);
+    glT.texParameteri(glT.TEXTURE_2D,glT.TEXTURE_MIN_FILTER,glT.LINEAR);
+    glT.texParameteri(glT.TEXTURE_2D,glT.TEXTURE_MAG_FILTER,glT.LINEAR);
+    return t;
+  }
+  texImageT=makeTexT();texDepthT=makeTexT();
+  glT.uniform1i(glT.getUniformLocation(progT,'uImage'),0);
+  glT.uniform1i(glT.getUniformLocation(progT,'uDepth'),1);
+  const wrap=$('tiltWrap');
+  wrap.addEventListener('pointermove',e=>{
+    const r=wrap.getBoundingClientRect();
+    tiltTX=((e.clientX-r.left)/r.width-0.5)*2;
+    tiltTY=((e.clientY-r.top)/r.height-0.5)*2;
+    moveShine(tiltTX,tiltTY);
+  });
+  wrap.addEventListener('pointerleave',()=>{ tiltTX=0;tiltTY=0; moveShine(0,0); });
+  (function animateTilt(){
+    requestAnimationFrame(animateTilt);
+    if(!$('paneTilt').classList.contains('active')||!tiltTexReady)return;
+    tiltCX+=(tiltTX-tiltCX)*0.15;tiltCY+=(tiltTY-tiltCY)*0.15;
+    const amp=(+$('tiltStrength').value/100)*0.12;
+    glT.uniform2f(uOffsetT,tiltCX*amp,-tiltCY*amp);
+    glT.drawArrays(glT.TRIANGLE_STRIP,0,4);
+  })();
+}
+function moveShine(nx,ny){
+  const s=$('tiltShine');
+  s.style.display=$('tiltShineChk').checked?'block':'none';
+  s.style.background='radial-gradient(circle at '+((nx*0.5+0.5)*100)+'% '+((ny*0.5+0.5)*100)+'%, rgba(255,255,255,.9), transparent 55%)';
+}
+function uploadTiltTextures(){
+  if(!glT||!imgCanvas)return;
+  glT.activeTexture(glT.TEXTURE0);glT.bindTexture(glT.TEXTURE_2D,texImageT);
+  glT.texImage2D(glT.TEXTURE_2D,0,glT.RGBA,glT.RGBA,glT.UNSIGNED_BYTE,imgCanvas);
+  glT.activeTexture(glT.TEXTURE1);glT.bindTexture(glT.TEXTURE_2D,texDepthT);
+  glT.texImage2D(glT.TEXTURE_2D,0,glT.RGBA,glT.RGBA,glT.UNSIGNED_BYTE,depthCanvas);
+  tiltTexReady=true;
+}
+function resizeTiltRenderer(){
+  if(!glT)return;
+  const canvas=$('tiltView');
+  const w=canvas.clientWidth||400,h=Math.max(120,w*((H||600)/(W||900)));
+  canvas.width=w;canvas.height=h;
+  glT.viewport(0,0,w,h);
+  uploadTiltTextures();
+}
+$('tiltGyroBtn').addEventListener('click',()=>{
+  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+    DeviceOrientationEvent.requestPermission().then(state=>{
+      if(state==='granted')bindGyroTilt(); else showTiltMsg('Izin gyroscope ditolak.',true);
+    }).catch(()=>showTiltMsg('Gagal minta izin gyroscope.',true));
+  }else{
+    bindGyroTilt();
+  }
+});
+let gyroBound=false;
+function bindGyroTilt(){
+  if(gyroBound)return;gyroBound=true;
+  window.addEventListener('deviceorientation',e=>{
+    if(e.gamma==null||e.beta==null)return;
+    tiltTX=Math.max(-1,Math.min(1,e.gamma/30));
+    tiltTY=Math.max(-1,Math.min(1,(e.beta-45)/30));
+    moveShine(tiltTX,tiltTY);
+  });
+  showTiltMsg('Gyroscope aktif — miringkan HP.');
+}
+function showTiltMsg(text,fail){ const el=$('tiltMsg'); el.style.display='block'; el.className='rep'+(fail?' fail':''); el.textContent=text; }
+$('exportWidgetBtn').addEventListener('click',()=>{
+  if(!imgCanvas)return showTiltMsg('Upload gambar dulu di tab 1.',true);
+  const imgData=imgCanvas.toDataURL('image/png');
+  const depthData=depthCanvas.toDataURL('image/png');
+  const strength=+$('tiltStrength').value,shine=$('tiltShineChk').checked;
+  const html=buildWidgetHtml(imgData,depthData,strength,shine);
+  const blob=new Blob([html],{type:'text/html'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='tilt-card.html';
+  document.body.appendChild(a);a.click();a.remove();
+  showTiltMsg('tilt-card.html diunduh — buka langsung, atau embed via <iframe src="tilt-card.html">.');
+});
+function buildWidgetHtml(imgData,depthData,strength,shine){
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:transparent}
+.wrap{position:relative;width:100%;height:100%}
+canvas{display:block;width:100%;height:100%}
+.shine{position:absolute;inset:0;pointer-events:none;mix-blend-mode:overlay;opacity:.5}
+.gbtn{position:absolute;bottom:8px;right:8px;font:12px sans-serif;padding:6px 10px;border-radius:8px;border:none;background:rgba(0,0,0,.55);color:#fff;cursor:pointer}
+</style></head><body>
+<div class="wrap" id="w"><canvas id="c"></canvas><div class="shine" id="s" style="display:${shine?'block':'none'}"></div>
+<button class="gbtn" id="g">📱 Gyroscope</button></div>
+<script>
+const IMG_SRC=${JSON.stringify(imgData)},DEPTH_SRC=${JSON.stringify(depthData)},STRENGTH=${strength};
+const canvas=document.getElementById('c'),wrap=document.getElementById('w'),shine=document.getElementById('s');
+const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
+const vsSrc='attribute vec2 aPos;varying vec2 vUv;void main(){vUv=aPos*0.5+0.5;gl_Position=vec4(aPos,0.0,1.0);}';
+const fsSrc='precision mediump float;varying vec2 vUv;uniform sampler2D uImage;uniform sampler2D uDepth;uniform vec2 uOffset;'+
+  'void main(){float d=texture2D(uDepth,vUv).r*2.0-1.0;vec2 duv=clamp(vUv-uOffset*d,0.0,1.0);gl_FragColor=texture2D(uImage,duv);}';
+function compile(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;}
+const prog=gl.createProgram();
+gl.attachShader(prog,compile(gl.VERTEX_SHADER,vsSrc));gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fsSrc));
+gl.linkProgram(prog);gl.useProgram(prog);
+const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+const aPos=gl.getAttribLocation(prog,'aPos');gl.enableVertexAttribArray(aPos);gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+const uOffset=gl.getUniformLocation(prog,'uOffset');
+function makeTex(){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);return t;}
+const texImage=makeTex(),texDepth=makeTex();
+gl.uniform1i(gl.getUniformLocation(prog,'uImage'),0);gl.uniform1i(gl.getUniformLocation(prog,'uDepth'),1);
+let ready=0;
+function loadTex(src,tex,unit,done){const im=new Image();im.onload=()=>{gl.activeTexture(unit);gl.bindTexture(gl.TEXTURE_2D,tex);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);ready++;if(done)done();};im.src=src;}
+function resize(){const w=canvas.clientWidth||300,h=canvas.clientHeight||300;canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
+window.addEventListener('resize',resize);resize();
+loadTex(IMG_SRC,texImage,gl.TEXTURE0);loadTex(DEPTH_SRC,texDepth,gl.TEXTURE1);
+let tx=0,ty=0,cx=0,cy=0;
+wrap.addEventListener('pointermove',e=>{const r=wrap.getBoundingClientRect();
+  tx=((e.clientX-r.left)/r.width-0.5)*2;ty=((e.clientY-r.top)/r.height-0.5)*2;moveShine();});
+wrap.addEventListener('pointerleave',()=>{tx=0;ty=0;moveShine();});
+function moveShine(){shine.style.background='radial-gradient(circle at '+((tx*0.5+0.5)*100)+'% '+((ty*0.5+0.5)*100)+'%, rgba(255,255,255,.9), transparent 55%)';}
+document.getElementById('g').addEventListener('click',()=>{
+  const start=()=>window.addEventListener('deviceorientation',e=>{
+    if(e.gamma==null||e.beta==null)return;
+    tx=Math.max(-1,Math.min(1,e.gamma/30));ty=Math.max(-1,Math.min(1,(e.beta-45)/30));moveShine();});
+  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+    DeviceOrientationEvent.requestPermission().then(s=>{if(s==='granted')start();});
+  }else start();
+});
+(function loop(){
+  requestAnimationFrame(loop);
+  if(ready<2)return;
+  cx+=(tx-cx)*0.15;cy+=(ty-cy)*0.15;
+  const amp=(STRENGTH/100)*0.12;
+  gl.uniform2f(uOffset,cx*amp,-cy*amp);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+})();
+<\/script></body></html>`;
+}
+
 </script>
 </body>
 </html>
