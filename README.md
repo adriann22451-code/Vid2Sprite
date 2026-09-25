@@ -106,11 +106,13 @@ Catatan: pivot tiap sprite di-set bottom-center (titik pijak umum karakter 2D) d
 ```
 index.html              → generator sprite (mode video & mode gambar)
 battle.html              → demo battle yang memuat hasil generator, plus test report per slot
+parallax.html            → susun beberapa gambar jadi layer parallax background, atau potong 1 gambar jadi beberapa layer
+depth-parallax.html      → lukis depth map manual dari 1 gambar → animasi parallax 2.5D (WebGL) + export video/model 3D (.glb/.obj)
 unity/Vid2SpriteImporter.cs → skrip Editor Unity untuk import otomatis dari PNG+JSON native tool ini
 README.md                → dokumen ini
 ```
 
-Tidak ada dependency build — cukup dibuka langsung di browser modern. Satu-satunya library eksternal adalah [JSZip](https://stuk.github.io/jszip/) (dimuat dari CDN) untuk membuat file ZIP.
+Tidak ada dependency build — cukup dibuka langsung di browser modern. `index.html`, `battle.html`, dan `parallax.html` sepenuhnya offline (satu-satunya library eksternal adalah [JSZip](https://stuk.github.io/jszip/) dari CDN, untuk `index.html`). `depth-parallax.html` butuh koneksi internet saat dibuka karena memuat [Three.js](https://threejs.org/) dari CDN untuk fitur Model 3D.
 
 ## Catatan teknis
 
