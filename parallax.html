@@ -47,6 +47,7 @@ p.s{margin:0 0 12px;color:var(--mu);font-size:13.5px}
 .rep{padding:8px 10px;border-radius:8px;background:var(--sf2);border:1px solid var(--ln);font-size:13px;margin-top:8px}
 .rep.fail{border-color:#ff6b6b}
 .hint{color:var(--mu);font-size:12.5px}
+.cutcv{display:block;width:100%;height:auto;max-height:60vh;object-fit:contain;border-radius:10px;border:1px solid var(--ln);background:#0c1120;touch-action:none;cursor:crosshair}
 </style>
 </head>
 <body>
@@ -65,6 +66,23 @@ p.s{margin:0 0 12px;color:var(--mu);font-size:13.5px}
 <div class="bar">
   <label class="c" style="flex:1;min-width:220px">Scrub manual (nonaktif saat diputar)<input type="range" id="scrub" min="-3000" max="3000" value="0" style="width:100%"></label>
 </div>
+
+<section class="box">
+  <h2>Potong 1 gambar jadi beberapa layer</h2>
+  <p class="s hint">Upload satu gambar utuh (misal ilustrasi langit-gunung-pohon jadi satu file), lalu <b>drag kotak</b> di atas gambar untuk pilih satu bagian, kasih nama, dan tekan potong — bagian itu langsung jadi layer baru di bawah. Gambar sumber tetap ada supaya bisa dipotong berkali-kali (ulangi untuk tiap bagian).</p>
+  <div class="addrow">
+    <span class="btn sm fileBtn">+ Upload gambar sumber<input type="file" accept="image/*" id="cutSrc"></span>
+    <button class="btn sm sec" id="cutClear" disabled>Ganti/hapus gambar sumber</button>
+  </div>
+  <div id="cutWrap" style="display:none;margin-top:10px">
+    <canvas id="cutCanvas" class="cutcv"></canvas>
+    <div class="bar" style="margin-top:10px">
+      <label class="c">Nama layer<input type="text" id="cutName" value="layer" style="width:140px"></label>
+      <button class="btn sm" id="cutAdd" disabled>✂️ Potong & tambah sebagai layer</button>
+      <span class="hint" id="cutHint">Drag di gambar buat pilih area dulu.</span>
+    </div>
+  </div>
+</section>
 
 <section class="box">
   <h2>Layer</h2>
@@ -108,18 +126,21 @@ function recomputeDefaultSpeeds(){
   const total=layers.length;
   layers.forEach((l,i)=>{ if(!l.speedTouched) l.speed=defaultSpeedFor(i,total); });
 }
-function addLayerFile(file){
-  const url=URL.createObjectURL(file);
+function addLayerFromBlob(blob,name){
+  const url=URL.createObjectURL(blob);
   const img=new Image();
   img.onload=()=>{
-    const l={id:uid++,name:file.name.replace(/\.[a-z0-9]+$/i,''),img,file,url,
+    const l={id:uid++,name,img,file:blob,url,
       speed:0,speedTouched:false,heightPct:100,posPct:100,opacity:1,repeatX:true};
     layers.push(l);
     recomputeDefaultSpeeds();
     renderLayers();
   };
-  img.onerror=()=>{ URL.revokeObjectURL(url); showExportMsg('Gagal memuat gambar: '+file.name,true); };
+  img.onerror=()=>{ URL.revokeObjectURL(url); showExportMsg('Gagal memuat potongan gambar.',true); };
   img.src=url;
+}
+function addLayerFile(file){
+  addLayerFromBlob(file,file.name.replace(/\.[a-z0-9]+$/i,''));
 }
 $('addLayer').addEventListener('change',e=>{
   [...e.target.files].forEach(addLayerFile);
@@ -140,7 +161,91 @@ function removeLayer(id){
   recomputeDefaultSpeeds();
   renderLayers();
 }
-window.addEventListener('beforeunload',()=>{ layers.forEach(l=>URL.revokeObjectURL(l.url)); });
+window.addEventListener('beforeunload',()=>{ layers.forEach(l=>URL.revokeObjectURL(l.url)); if(cutUrl)URL.revokeObjectURL(cutUrl); });
+
+/* ---- potong 1 gambar jadi beberapa layer ---- */
+let cutImg=null,cutUrl=null,cutSel=null,cutDragging=false,cutDragStart=null;
+const cutCanvas=$('cutCanvas'),cutCtx=cutCanvas.getContext('2d');
+function drawCutCanvas(){
+  if(!cutImg)return;
+  cutCtx.clearRect(0,0,cutCanvas.width,cutCanvas.height);
+  cutCtx.drawImage(cutImg,0,0);
+  if(cutSel&&cutSel.w>0&&cutSel.h>0){
+    cutCtx.save();
+    const lw=Math.max(2,cutCanvas.width/300);
+    cutCtx.lineWidth=lw;cutCtx.strokeStyle='#ffc93c';cutCtx.setLineDash([lw*4,lw*3]);
+    cutCtx.strokeRect(cutSel.x,cutSel.y,cutSel.w,cutSel.h);
+    cutCtx.fillStyle='rgba(255,201,60,.18)';
+    cutCtx.fillRect(cutSel.x,cutSel.y,cutSel.w,cutSel.h);
+    cutCtx.restore();
+  }
+}
+function cutPointFromEvent(e){
+  const r=cutCanvas.getBoundingClientRect();
+  const sx=cutCanvas.width/r.width,sy=cutCanvas.height/r.height;
+  return {x:Math.max(0,Math.min(cutCanvas.width,(e.clientX-r.left)*sx)),
+           y:Math.max(0,Math.min(cutCanvas.height,(e.clientY-r.top)*sy))};
+}
+$('cutSrc').addEventListener('change',e=>{
+  const f=e.target.files[0];e.target.value='';
+  if(!f)return;
+  const url=URL.createObjectURL(f);
+  const img=new Image();
+  img.onload=()=>{
+    if(cutUrl)URL.revokeObjectURL(cutUrl);
+    cutImg=img;cutUrl=url;cutSel=null;
+    cutCanvas.width=img.naturalWidth;cutCanvas.height=img.naturalHeight;
+    drawCutCanvas();
+    $('cutWrap').style.display='block';
+    $('cutClear').disabled=false;
+    $('cutAdd').disabled=true;
+    $('cutHint').textContent='Drag di gambar buat pilih area dulu.';
+  };
+  img.onerror=()=>{ URL.revokeObjectURL(url); showExportMsg('Gagal memuat gambar sumber.',true); };
+  img.src=url;
+});
+$('cutClear').addEventListener('click',()=>{
+  if(cutUrl)URL.revokeObjectURL(cutUrl);
+  cutImg=null;cutUrl=null;cutSel=null;
+  $('cutWrap').style.display='none';
+  $('cutClear').disabled=true;
+});
+cutCanvas.addEventListener('pointerdown',e=>{
+  if(!cutImg)return;
+  cutCanvas.setPointerCapture(e.pointerId);
+  cutDragging=true;
+  cutDragStart=cutPointFromEvent(e);
+  cutSel={x:cutDragStart.x,y:cutDragStart.y,w:0,h:0};
+  drawCutCanvas();
+});
+cutCanvas.addEventListener('pointermove',e=>{
+  if(!cutDragging)return;
+  const p=cutPointFromEvent(e);
+  cutSel={x:Math.min(cutDragStart.x,p.x),y:Math.min(cutDragStart.y,p.y),
+           w:Math.abs(p.x-cutDragStart.x),h:Math.abs(p.y-cutDragStart.y)};
+  drawCutCanvas();
+});
+cutCanvas.addEventListener('pointerup',()=>{
+  cutDragging=false;
+  const ok=cutSel&&cutSel.w>=4&&cutSel.h>=4;
+  $('cutAdd').disabled=!ok;
+  $('cutHint').textContent=ok?(Math.round(cutSel.w)+' × '+Math.round(cutSel.h)+' px terpilih — beri nama lalu potong.'):'Area terlalu kecil, coba lagi.';
+});
+$('cutAdd').addEventListener('click',()=>{
+  if(!cutImg||!cutSel||cutSel.w<4||cutSel.h<4)return;
+  const w=Math.round(cutSel.w),h=Math.round(cutSel.h);
+  const off=document.createElement('canvas');off.width=w;off.height=h;
+  off.getContext('2d').drawImage(cutImg,cutSel.x,cutSel.y,w,h,0,0,w,h);
+  off.toBlob(blob=>{
+    if(!blob){ showExportMsg('Gagal memotong gambar.',true); return; }
+    const name=($('cutName').value||'layer').trim()||'layer';
+    addLayerFromBlob(blob,name);
+    showExportMsg('Layer "'+name+'" ditambahkan dari potongan gambar.');
+    cutSel=null;drawCutCanvas();
+    $('cutAdd').disabled=true;
+    $('cutHint').textContent='Drag lagi buat area berikutnya, atau ganti gambar sumber.';
+  },'image/png');
+});
 function renderLayers(){
   const box=$('layerList');box.textContent='';
   layers.forEach((l,i)=>{
