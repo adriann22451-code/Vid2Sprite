@@ -37,6 +37,12 @@ h3{margin:16px 0 8px;font-size:13.5px;color:var(--mu)}
 .slot b{font-size:14px}
 .slot small{color:var(--mu);overflow-wrap:anywhere}
 .slot input{font-size:13px;max-width:100%}
+.rep{padding:8px 10px;border-radius:8px;background:var(--sf2);border:1px solid var(--ln);font-size:13px}
+.rep b{font-size:13.5px}
+.rep.fail{border-color:#ff6b6b}
+.rep.warn{border-color:var(--acd)}
+.rep ul{margin:4px 0 0;padding-left:18px;color:var(--mu)}
+.rep ul li{margin:2px 0}
 </style>
 </head>
 <body>
@@ -85,6 +91,12 @@ h3{margin:16px 0 8px;font-size:13.5px;color:var(--mu)}
     <label class="slot"><b>Kalah</b><input type="file" multiple accept=".png,.json,image/*,application/json" data-slot="E_death"><small>Belum dipilih</small></label>
   </div>
 </section>
+
+<section class="box" id="reportBox" hidden>
+  <h2>Test report</h2>
+  <p class="s" id="reportSummary"></p>
+  <div id="reportList" style="display:flex;flex-direction:column;gap:6px"></div>
+</section>
 </div>
 
 <script>
@@ -104,14 +116,87 @@ async function loadPair(files){
   const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('PNG tidak bisa dibaca.'));i.src=URL.createObjectURL(p)});
   return {img,meta};
 }
+const slotErrors={};
 document.querySelectorAll('input[data-slot]').forEach(inp=>inp.addEventListener('change',async()=>{
   const [side,anim]=inp.dataset.slot.split('_');
   const dict=side==='P'?sprP:sprE;
   const out=inp.parentElement.querySelector('small');
   if(!inp.files.length)return;
-  try{dict[anim]=await loadPair(inp.files);out.textContent=dict[anim].meta.frames.length+' frame dimuat'}
-  catch(e){dict[anim]=null;out.textContent=e.message}
+  try{dict[anim]=await loadPair(inp.files);delete slotErrors[inp.dataset.slot];out.textContent=dict[anim].meta.frames.length+' frame dimuat'}
+  catch(e){dict[anim]=null;slotErrors[inp.dataset.slot]=e.message;out.textContent=e.message}
+  renderReport();
 }));
+
+/* ---- test report: validasi pasangan PNG+JSON per slot, tanpa mengubah gameplay ---- */
+const LOOP_EXPECTED={idle:true,walk:true};
+function validateSlot(slotKey,entry){
+  if(!entry)return{level:'ok',results:[]};
+  const {img,meta}=entry,results=[];
+  const num=v=>typeof v==='number'&&isFinite(v);
+  if(!num(meta.frameWidth)||meta.frameWidth<=0)results.push({level:'fail',msg:'frameWidth tidak ada / tidak valid.'});
+  if(!num(meta.frameHeight)||meta.frameHeight<=0)results.push({level:'fail',msg:'frameHeight tidak ada / tidak valid.'});
+  if(!Array.isArray(meta.frames)||!meta.frames.length)results.push({level:'fail',msg:'frames[] kosong atau tidak ada.'});
+  if(!num(meta.fps)||meta.fps<=0)results.push({level:'warn',msg:'fps tidak ada/tidak valid — dipakai fallback 10fps.'});
+  if(typeof meta.loop!=='boolean')results.push({level:'warn',msg:'Field loop tidak ada — dipakai tebakan default.'});
+
+  if(num(meta.frameWidth)&&num(meta.frameHeight)&&Array.isArray(meta.frames)&&meta.frames.length&&img.naturalWidth){
+    const cols=meta.columns||Math.ceil(Math.sqrt(meta.frames.length));
+    const rows=meta.rows||Math.ceil(meta.frames.length/cols);
+    const pad=meta.padding||0;
+    const expW=cols*meta.frameWidth+pad*(cols+1),expH=rows*meta.frameHeight+pad*(rows+1);
+    if(Math.abs(img.naturalWidth-expW)>2)results.push({level:'fail',msg:`Lebar PNG (${img.naturalWidth}px) tidak cocok dengan JSON (perkiraan ${expW}px dari columns×frameWidth).`});
+    if(Math.abs(img.naturalHeight-expH)>2)results.push({level:'fail',msg:`Tinggi PNG (${img.naturalHeight}px) tidak cocok dengan JSON (perkiraan ${expH}px dari rows×frameHeight).`});
+  }
+  if(Array.isArray(meta.frames)&&img.naturalWidth){
+    const bad=meta.frames.some(f=>!num(f.x)||!num(f.y)||!num(f.w)||!num(f.h)||f.x<0||f.y<0||f.x+f.w>img.naturalWidth+2||f.y+f.h>img.naturalHeight+2);
+    if(bad)results.push({level:'fail',msg:'Ada frame yang koordinatnya berada di luar ukuran PNG.'});
+  }
+  const hb=meta.hitbox;
+  if(!hb)results.push({level:'warn',msg:'Tidak ada hitbox global di JSON — dipakai kotak default.'});
+  else if(num(hb.x)&&num(hb.y)&&num(hb.w)&&num(hb.h)){
+    if(hb.w<=0||hb.h<=0)results.push({level:'fail',msg:'Hitbox lebar/tinggi 0 atau negatif.'});
+    else if(hb.x<0||hb.y<0||hb.x+hb.w>meta.frameWidth+2||hb.y+hb.h>meta.frameHeight+2)results.push({level:'fail',msg:'Hitbox keluar dari batas frame.'});
+  }else results.push({level:'fail',msg:'Field hitbox ada tapi x/y/w/h tidak lengkap.'});
+
+  const animName=slotKey.split('_')[1];
+  if(typeof meta.loop==='boolean'&&animName in LOOP_EXPECTED){
+    const expect=LOOP_EXPECTED[animName];
+    if(meta.loop!==expect)results.push({level:'warn',msg:`loop=${meta.loop}, biasanya "${animName}" di-set loop=${expect} (${expect?'diulang terus':'sekali lalu berhenti'}).`});
+  }
+  const level=results.some(r=>r.level==='fail')?'fail':(results.length?'warn':'ok');
+  return{level,results};
+}
+function collectSlots(){
+  return[...document.querySelectorAll('input[data-slot]')].map(inp=>{
+    const[side,anim]=inp.dataset.slot.split('_');
+    return{key:inp.dataset.slot,label:inp.parentElement.querySelector('b').textContent,dict:side==='P'?sprP:sprE,anim};
+  });
+}
+function renderReport(){
+  const box=$('reportList');box.textContent='';
+  let ok=0,warn=0,fail=0,touched=0;
+  collectSlots().forEach(({key,label,dict,anim})=>{
+    const entry=dict[anim],loadErr=slotErrors[key];
+    if(!entry&&!loadErr)return; // slot belum diisi = tidak dinilai
+    touched++;
+    let level,results;
+    if(loadErr){level='fail';results=[{level:'fail',msg:loadErr}];}
+    else({level,results}=validateSlot(key,entry));
+    if(level==='ok')ok++;else if(level==='warn')warn++;else fail++;
+    const row=document.createElement('div');row.className='rep '+level;
+    const head=document.createElement('b');
+    head.textContent=(level==='ok'?'✅ ':level==='warn'?'⚠️ ':'❌ ')+label+' ('+key+')';
+    row.appendChild(head);
+    if(results.length){
+      const ul=document.createElement('ul');
+      results.forEach(r=>{const li=document.createElement('li');li.textContent=r.msg;ul.appendChild(li);});
+      row.appendChild(ul);
+    }
+    box.appendChild(row);
+  });
+  $('reportBox').hidden=touched===0;
+  $('reportSummary').textContent=touched?`${ok} lolos, ${warn} peringatan, ${fail} gagal, dari ${touched} slot yang sudah diisi.`:'';
+}
 
 /* ---- entitas ---- */
 function makeActor(side,x,hp){
