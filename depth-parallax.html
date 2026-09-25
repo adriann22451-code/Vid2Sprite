@@ -116,7 +116,6 @@ label.c input[type=range]{padding:0}
 
 </main>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/OBJExporter.js"></script>
 <script>
@@ -334,7 +333,7 @@ $('playBtn').addEventListener('click',()=>{
 });
 
 /* ---------- 3D mesh (Three.js) ---------- */
-let scene,camera,renderer,controls,mesh3d;
+let scene,camera,renderer,mesh3d;
 function initMesh(){
   if(renderer||typeof THREE==='undefined')return;
   const canvas=$('meshView');
@@ -344,20 +343,51 @@ function initMesh(){
   scene=new THREE.Scene();
   scene.background=new THREE.Color(0x0b0e17);
   camera=new THREE.PerspectiveCamera(45,1,0.01,50);
-  camera.position.set(0,0,2.2);
-  controls=new THREE.OrbitControls(camera,renderer.domElement);
-  controls.enableDamping=true;controls.dampingFactor=0.08;
-  controls.minDistance=0.6;controls.maxDistance=6;
+  updateCameraFromSpherical();
   const dirLight=new THREE.DirectionalLight(0xffffff,1.1);
   dirLight.position.set(1,1.4,2);
   scene.add(dirLight);
   scene.add(new THREE.AmbientLight(0xffffff,0.5));
+  bindMeshOrbitInput(canvas);
   (function animateMesh(){
     requestAnimationFrame(animateMesh);
     if(!$('paneMesh').classList.contains('active'))return;
-    controls.update();
     renderer.render(scene,camera);
   })();
+}
+/* kontrol orbit sendiri (drag = putar, scroll = zoom) — tidak pakai library OrbitControls pihak ketiga */
+let camTheta=0,camPhi=Math.PI/2,camRadius=2.2;
+function updateCameraFromSpherical(){
+  camPhi=Math.max(0.12,Math.min(Math.PI-0.12,camPhi));
+  camRadius=Math.max(0.6,Math.min(6,camRadius));
+  camera.position.set(
+    camRadius*Math.sin(camPhi)*Math.sin(camTheta),
+    camRadius*Math.cos(camPhi),
+    camRadius*Math.sin(camPhi)*Math.cos(camTheta)
+  );
+  camera.lookAt(0,0,0);
+}
+function bindMeshOrbitInput(canvas){
+  let dragging=false,lastX=0,lastY=0;
+  canvas.style.touchAction='none';
+  canvas.addEventListener('pointerdown',e=>{
+    dragging=true;lastX=e.clientX;lastY=e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove',e=>{
+    if(!dragging)return;
+    camTheta-=(e.clientX-lastX)*0.008;
+    camPhi-=(e.clientY-lastY)*0.008;
+    lastX=e.clientX;lastY=e.clientY;
+    updateCameraFromSpherical();
+  });
+  canvas.addEventListener('pointerup',()=>dragging=false);
+  canvas.addEventListener('pointercancel',()=>dragging=false);
+  canvas.addEventListener('wheel',e=>{
+    e.preventDefault();
+    camRadius*=1+e.deltaY*0.0015;
+    updateCameraFromSpherical();
+  },{passive:false});
 }
 function resizeMeshRenderer(){
   if(!renderer)return;
