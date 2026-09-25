@@ -124,7 +124,9 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
       <label class="f">Lebar frame (px)<input type="number" id="w" value="128" min="8" max="2048"></label>
       <label class="f">Tinggi frame<input type="number" id="h" disabled placeholder="otomatis"></label>
       <label class="f">Kolom sheet (0 = otomatis)<input type="number" id="cols" value="0" min="0"></label>
+      <label class="f">Padding antar frame (px)<input type="number" id="pad" value="0" min="0" max="64"></label>
     </div>
+    <label class="sw"><input type="checkbox" id="grid"><span class="tg"></span><b>Tampilkan grid di pratinjau sheet</b><small>Garis putus-putus di batas tiap frame, tidak ikut ke file yang diunduh</small></label>
     <label class="sw"><input type="checkbox" id="key"><span class="tg"></span><b>Hapus background (chroma key)</b><small>Untuk video green screen atau background polos</small></label>
     <div id="tolw" style="display:none;flex-direction:column;gap:12px;margin-bottom:14px">
       <label class="f">Warna background<select id="kmode"><option value="green">Hijau (green screen)</option><option value="blue">Biru (blue screen)</option><option value="magenta">Magenta</option><option value="custom">Pilih warna sendiri</option><option value="auto">Otomatis (pojok kiri atas)</option></select></label>
@@ -189,7 +191,9 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
       <label class="f">Ukuran frame (px)<input type="number" id="isize" value="128" min="16" max="1024"></label>
       <label class="f">FPS pratinjau<input type="number" id="ifps" value="12" min="1" max="60"></label>
       <label class="f">Kolom sheet (0 = otomatis)<input type="number" id="icols" value="0" min="0"></label>
+      <label class="f">Padding antar frame (px)<input type="number" id="ipad" value="0" min="0" max="64"></label>
     </div>
+    <label class="sw"><input type="checkbox" id="igrid"><span class="tg"></span><b>Tampilkan grid di pratinjau sheet</b><small>Garis putus-putus di batas tiap frame, tidak ikut ke file yang diunduh</small></label>
     <h3>Proporsi &amp; posisi tubuh</h3>
     <div class="fields">
       <label class="f">Jangkar kaki dari atas (%)<input type="number" id="ianchorY" value="92" min="50" max="100"></label>
@@ -230,7 +234,7 @@ input[type=color]{width:100%;height:44px;padding:3px;border:1px solid var(--ln);
 
 <section class="box" id="out" style="display:none">
   <h3>Hasil</h3>
-  <div class="chk"><canvas id="sheet"></canvas></div>
+  <div class="chk" style="position:relative;display:inline-block"><canvas id="sheet"></canvas><canvas id="sheetgrid" style="position:absolute;left:0;top:0;pointer-events:none"></canvas></div>
   <div class="pvrow">
     <div>
       <h3>Pratinjau animasi</h3>
@@ -278,6 +282,26 @@ const v=$('v'),sheet=$('sheet'),prev=$('prev');
 let vbase='sprite',frameBlobs=[],url=null,base='sprite',meta=null,timer=null,busy=false;
 let rawVideoFrames=[];
 const msg=t=>$('msg').textContent=t;
+
+/* overlay grid putus-putus di atas canvas #sheet, murni visual (tidak mengubah pixel sheet asli
+   yang diunduh/di-scan hitbox). Menandai batas tiap cell termasuk area padding-nya. */
+function drawGrid(fw,fh,cols,rows,pad,on){
+  const gc=$('sheetgrid');
+  gc.width=sheet.width; gc.height=sheet.height;
+  const g=gc.getContext('2d');
+  g.clearRect(0,0,gc.width,gc.height);
+  if(!on)return;
+  g.strokeStyle='rgba(255,50,50,.85)'; g.lineWidth=1; g.setLineDash([4,3]);
+  // gambar kotak putus-putus di batas tiap frame (bukan cuma garis grid rata, biar area padding jelas kelihatan kosong)
+  for(let i=0;i<cols*rows;i++){
+    const col=i%cols,row=Math.floor(i/cols);
+    const x=pad+col*(fw+pad)+.5,y=pad+row*(fh+pad)+.5;
+    g.strokeRect(x,y,fw-1,fh-1);
+  }
+  g.setLineDash([]);
+}
+$('grid').addEventListener('change',()=>{ if(meta)drawGrid(meta.frameWidth,meta.frameHeight,meta.columns,meta.rows,meta.padding||0,$('grid').checked); });
+$('igrid').addEventListener('change',()=>{ if(meta)drawGrid(meta.frameWidth,meta.frameHeight,meta.columns,meta.rows,meta.padding||0,$('igrid').checked); });
 
 /* pilih jumlah kolom yang meminimalkan sel kosong di grid sekaligus menjaga tekstur akhir tidak terlalu memanjang */
 function bestCols(n,fw,fh){
@@ -389,11 +413,13 @@ $('gen').onclick=async()=>{
     const efps=cnt>0?Math.min(60,Math.max(1,Math.round(n/(e-s)))):fps;
     let cols=+$('cols').value||bestCols(n,fw,fh); cols=Math.min(cols,n);
     const rows=Math.ceil(n/cols);
-    if(cols*fw>16000||rows*fh>16000){msg('Sheet terlalu besar. Kecilkan lebar frame, FPS, atau durasi.');return}
+    const pad=Math.max(0,Math.min(64,Math.round(+$('pad').value||0)));
+    const sheetW=cols*fw+pad*(cols+1),sheetH=rows*fh+pad*(rows+1);
+    if(sheetW>16000||sheetH>16000){msg('Sheet terlalu besar. Kecilkan lebar frame, FPS, durasi, atau padding.');return}
     const heavy=n>150||(fw*fh*n)>50_000_000;
     if(heavy&&!confirm(`Ini akan memproses ${n} frame berukuran ${fw}×${fh}px. Bisa memakan waktu dan memori cukup besar. Lanjutkan?`)){msg('Dibatalkan.');return}
     const cacheRaw=(fw*fh*4*n)<=300*1024*1024; // ~300MB batas aman biar tidak membebani memori browser
-    sheet.width=cols*fw; sheet.height=rows*fh;
+    sheet.width=sheetW; sheet.height=sheetH;
     const sc=sheet.getContext('2d');
     const tmp=document.createElement('canvas'); tmp.width=fw; tmp.height=fh;
     const tc=tmp.getContext('2d',{willReadFrequently:true});
@@ -406,17 +432,19 @@ $('gen').onclick=async()=>{
       raws.push(cacheRaw?tc.getImageData(0,0,fw,fh):null);
       if(key)chromaKey(tc,fw,fh,KV);
       blobs.push(await new Promise(r=>tmp.toBlob(r,'image/png')));
-      const x=(i%cols)*fw,y=Math.floor(i/cols)*fh;
+      const col=i%cols,row=Math.floor(i/cols);
+      const x=pad+col*(fw+pad),y=pad+row*(fh+pad);
       sc.drawImage(tmp,x,y);
       frames.push({index:i,x,y,w:fw,h:fh});
       msg(`Mengekstrak frame ${i+1}/${n}…`);
     }
     base=vbase+'_'+$('atype').value;
-    meta={image:base+'_sheet.png',animation:$('atype').value,frameWidth:fw,frameHeight:fh,columns:cols,rows,frameCount:n,fps:efps,loop:$('tloop').checked,frames};
+    meta={image:base+'_sheet.png',animation:$('atype').value,frameWidth:fw,frameHeight:fh,columns:cols,rows,frameCount:n,fps:efps,loop:$('tloop').checked,padding:pad,frames};
     frameBlobs=blobs;
     rawVideoFrames=cacheRaw?raws:[];
     $('kreapply').disabled=!cacheRaw;
     $('out').style.display='block';
+    drawGrid(fw,fh,cols,rows,pad,$('grid').checked);
     msg(cacheRaw?`Selesai: ${n} frame, sheet ${sheet.width}×${sheet.height} px.`:`Selesai: ${n} frame, sheet ${sheet.width}×${sheet.height} px. (Ekstraksi ini terlalu besar untuk di-cache, jadi tombol "terapkan ulang" nonaktif — ubah pengaturan lalu proses ulang dari video kalau perlu ganti chroma key.)`);
     play();
   }catch(err){msg('Gagal: '+(err.message||err))}
@@ -527,7 +555,9 @@ $('igen').onclick=async()=>{
     const cs=Math.max(16,+$('isize').value||128),fps=Math.max(1,+$('ifps').value||10),k=(+$('iint').value)/50;
     let cols=+$('icols').value||bestCols(n,cs,cs); cols=Math.min(cols,n);
     const rows=Math.ceil(n/cols);
-    if(cols*cs>16000||rows*cs>16000){iMsg('Sheet terlalu besar. Kecilkan ukuran atau jumlah frame.');return}
+    const pad=Math.max(0,Math.min(64,Math.round(+$('ipad').value||0)));
+    const sheetW=cols*cs+pad*(cols+1),sheetH=rows*cs+pad*(rows+1);
+    if(sheetW>16000||sheetH>16000){iMsg('Sheet terlalu besar. Kecilkan ukuran, jumlah frame, atau padding.');return}
     if((n*cs*cs)>60_000_000&&!confirm(`Ini akan membuat ${n} frame berukuran ${cs}×${cs}px. Bisa memakan waktu cukup lama. Lanjutkan?`)){iMsg('Dibatalkan.');return}
     const sc0=Math.min(1,512/Math.max(img.naturalWidth,img.naturalHeight));
     const src=document.createElement('canvas');
@@ -542,7 +572,7 @@ $('igen').onclick=async()=>{
     const anchorX=Math.min(100,Math.max(0,+$('ianchorX').value||50))/100;
     const scalePct=Math.min(100,Math.max(30,+$('iscale').value||80))/100;
     const fit=Math.min(cs*scalePct/src.width,cs*scalePct/src.height),dw=src.width*fit,dh=src.height*fit;
-    sheet.width=cols*cs; sheet.height=rows*cs;
+    sheet.width=sheetW; sheet.height=sheetH;
     const sc=sheet.getContext('2d');
     const tmp=document.createElement('canvas'); tmp.width=cs; tmp.height=cs;
     const tc=tmp.getContext('2d');
@@ -621,14 +651,16 @@ $('igen').onclick=async()=>{
       }
       tc.restore();
       blobs.push(await new Promise(rs=>tmp.toBlob(rs,'image/png')));
-      const fx=(i%cols)*cs,fy=Math.floor(i/cols)*cs;
+      const col=i%cols,row=Math.floor(i/cols);
+      const fx=pad+col*(cs+pad),fy=pad+row*(cs+pad);
       sc.drawImage(tmp,fx,fy);
       frames.push({index:i,x:fx,y:fy,w:cs,h:cs});
     }
     base=ibase+'_'+anim;
-    meta={image:base+'_sheet.png',animation:anim,frameWidth:cs,frameHeight:cs,columns:cols,rows,frameCount:n,fps,loop:$('iloop').checked,frames};
+    meta={image:base+'_sheet.png',animation:anim,frameWidth:cs,frameHeight:cs,columns:cols,rows,frameCount:n,fps,loop:$('iloop').checked,padding:pad,frames};
     frameBlobs=blobs;
     $('out').style.display='block';
+    drawGrid(cs,cs,cols,rows,pad,$('igrid').checked);
     iMsg(`Selesai: animasi ${anim}, ${n} frame. Lihat hasilnya di bawah.`+keyWarn);
     play();
     $('out').scrollIntoView({behavior:'smooth'});

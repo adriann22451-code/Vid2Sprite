@@ -11,6 +11,7 @@ Semua diproses langsung di browser — tidak ada file yang diunggah ke mana pun.
 - **Hapus background (chroma key)**: mendukung hijau, biru, magenta, warna custom, atau deteksi otomatis dari pojok gambar — dengan kontrol toleransi, kehalusan tepi, dan despill.
 - **21 jenis animasi RPG** siap pakai (idle, walk, run, attack, skill, critical, death, victory, dll) dengan preset jumlah frame & mode loop.
 - **Hitbox otomatis**: dihitung dari bounding box piksel non-transparan tiap frame, bisa diperkecil sesuai kebutuhan.
+- **Padding antar frame**: tambahkan jarak kosong (px) di sekitar tiap frame pada sprite sheet, supaya tidak ada "bleeding" warna dari frame sebelah saat sheet di-scale/di-filter oleh game engine. Bisa dicek langsung lewat opsi **tampilkan grid** di pratinjau (garis putus-putus, murni visual — tidak ikut ke file yang diunduh).
 - **Preset ekspor**: simpan kombinasi ukuran, kolom, FPS, dan pengaturan chroma key sebagai preset bernama (tersimpan di `localStorage`), lalu terapkan kembali untuk animasi lain tanpa mengatur ulang dari nol.
 - **Koleksi karakter**: kumpulkan beberapa animasi per karakter (autosave ke IndexedDB), lalu unduh semuanya sekaligus sebagai satu paket ZIP berisi sheet, frame, JSON per-animasi, dan `manifest.json`.
 - **Demo battle** (`battle.html`): battle turn-based sederhana (serang/skill/bertahan/item) yang langsung memuat pasangan PNG + JSON hasil generator, untuk mengecek apakah sprite sudah pas dipakai di game.
@@ -44,6 +45,7 @@ Semua diproses langsung di browser — tidak ada file yang diunggah ke mana pun.
   "frameCount": 8,
   "fps": 12,
   "loop": true,
+  "padding": 0,
   "frames": [{ "index": 0, "x": 0, "y": 0, "w": 128, "h": 128, "hitbox": {...} }, ...],
   "hitbox": { "x": 38, "y": 12, "w": 51, "h": 102 }
 }
