@@ -101,17 +101,24 @@ function defaultSpeedFor(index,total){
   if(total<=1)return 0.6;
   return +(0.15+ (index/(total-1))*1.0).toFixed(2);
 }
+/* Set ulang speed default utk tiap layer yang belum diubah manual (speedTouched=false),
+   berdasarkan posisinya sekarang di daftar. Dipanggil tiap kali layer ditambah/dihapus/dipindah
+   supaya gradasi lambat→cepat (belakang→depan) selalu konsisten dgn urutan terkini. */
+function recomputeDefaultSpeeds(){
+  const total=layers.length;
+  layers.forEach((l,i)=>{ if(!l.speedTouched) l.speed=defaultSpeedFor(i,total); });
+}
 function addLayerFile(file){
   const url=URL.createObjectURL(file);
   const img=new Image();
   img.onload=()=>{
-    const l={id:uid++,name:file.name.replace(/\.[a-z0-9]+$/i,''),img,file,
-      speed:defaultSpeedFor(layers.length,layers.length+1),heightPct:100,posPct:100,opacity:1,repeatX:true};
+    const l={id:uid++,name:file.name.replace(/\.[a-z0-9]+$/i,''),img,file,url,
+      speed:0,speedTouched:false,heightPct:100,posPct:100,opacity:1,repeatX:true};
     layers.push(l);
-    layers.forEach((ly,i)=>{ if(ly!==l) return; }); // no-op, keeps order as inserted
+    recomputeDefaultSpeeds();
     renderLayers();
   };
-  img.onerror=()=>{ showExportMsg('Gagal memuat gambar: '+file.name,true); };
+  img.onerror=()=>{ URL.revokeObjectURL(url); showExportMsg('Gagal memuat gambar: '+file.name,true); };
   img.src=url;
 }
 $('addLayer').addEventListener('change',e=>{
@@ -121,12 +128,19 @@ $('addLayer').addEventListener('change',e=>{
 function moveLayer(i,dir){
   const j=i+dir; if(j<0||j>=layers.length)return;
   const t=layers[i];layers[i]=layers[j];layers[j]=t;
+  recomputeDefaultSpeeds();
   renderLayers();
 }
 function removeLayer(id){
-  layers=layers.filter(l=>l.id!==id);
+  const l=layers.find(x=>x.id===id);
+  if(!l)return;
+  if(!confirm('Hapus layer "'+l.name+'"? Tindakan ini tidak bisa diurungkan.'))return;
+  URL.revokeObjectURL(l.url);
+  layers=layers.filter(x=>x.id!==id);
+  recomputeDefaultSpeeds();
   renderLayers();
 }
+window.addEventListener('beforeunload',()=>{ layers.forEach(l=>URL.revokeObjectURL(l.url)); });
 function renderLayers(){
   const box=$('layerList');box.textContent='';
   layers.forEach((l,i)=>{
@@ -152,7 +166,7 @@ function renderLayers(){
       inp.addEventListener('input',()=>onChange(+inp.value));
       lab.appendChild(inp);return lab;
     }
-    fields.appendChild(numField('Speed',l.speed,0.05,0,3,v=>l.speed=v));
+    fields.appendChild(numField('Speed',l.speed,0.05,0,3,v=>{l.speed=v;l.speedTouched=true;}));
     fields.appendChild(numField('Tinggi (%)',l.heightPct,5,5,300,v=>l.heightPct=v));
     fields.appendChild(numField('Posisi Y (%)',l.posPct,5,0,100,v=>l.posPct=v));
     fields.appendChild(numField('Opacity',l.opacity,0.05,0,1,v=>l.opacity=v));
