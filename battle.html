@@ -197,6 +197,7 @@ function allComb(){return [...allies,...enemies];}
 function findById(id){return allComb().find(c=>c.id===id);}
 function opponentsOf(a){return a.side==='ally'?enemies:allies;}
 function aliveOpponents(a){return opponentsOf(a).filter(o=>!o.dead);}
+function setMsg(s){$('msg').textContent=s;}
 
 function layout(){
   function place(arr,region){
